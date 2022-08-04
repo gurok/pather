@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<svg viewBox="0 0 200 100n">
+	<unit id="n" value="2" />
+	<path d="m 50,50 h 30n h 30 h 30.555555" />
+	<path d="m 50,50 a 100,50 30 10.10 20" />
+	<path d="m 50,50 v -30n-2" />
+	<include href="simple.svg" />
+	<!-- Just a test comment -->
+</svg>
