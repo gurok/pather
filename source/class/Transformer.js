@@ -28,6 +28,8 @@ export default class Transformer
 			else
 			{
 				item = list.shift();
+				if(!item.previousSibling.tagName && item.previousSibling.nodeValue.trim() === "")
+					item.parentNode.removeChild(item.previousSibling);
 				item.parentNode.removeChild(item);
 			}
 			let parser = new ExpressionParser(new TokenStream(item.getAttribute("value")));
@@ -63,7 +65,14 @@ export default class Transformer
 
 	#parseSegmentList(context, list)
 	{
-		list.forEach(i => i.parentNode.removeChild(i));
+		list.forEach(i =>
+		{
+			if(!i.previousSibling.tagName && i.previousSibling.nodeValue.trim() === "")
+				i.parentNode.removeChild(i.previousSibling);
+			i.parentNode.removeChild(i)
+
+			return;
+		});
 		context.segment = list.reduce((previous, current) =>
 		{
 			let id = current.getAttribute("id");
@@ -152,7 +161,7 @@ export default class Transformer
 						if(cursor.getAttribute("id") !== i.getAttribute("id") || target !== null)
 						{
 							let parent = cursor.parentNode;
-							if(cursor.previousSibling && !cursor.previousSibling.tagName)
+							if(cursor.previousSibling && !cursor.previousSibling.tagName && cursor.previousSibling.nodeValue.trim() === "")
 								parent.removeChild(cursor.previousSibling);
 							parent.removeChild(cursor);
 						}

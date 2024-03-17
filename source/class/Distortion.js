@@ -170,9 +170,7 @@ export default class Distortion
 				if(distortionType !== Distortion.OPERATION_NONE)
 					point = Distortion.#rotate(origin.x, origin.y, point.x, point.y, distortionValue);
 				lastAngle = Math.atan2(point.y.subtract(origin.y).toNumber(), point.x.subtract(origin.x).toNumber()) * 180 / Math.PI;
-				console.log("Before", point.x.toString(), point.y.toString(), distortionType);
 				Distortion.#fixPoint(point, relative, topX, topY, distortionType, result);
-				console.log("After", point.x.toString(), point.y.toString(), distortionType);
 				top = point.x.equals(origin.x)
 					?
 					(

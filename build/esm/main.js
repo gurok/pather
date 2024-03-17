@@ -525,9 +525,7 @@ class Distortion
 				if(distortionType !== Distortion.OPERATION_NONE)
 					point = Distortion.#rotate(origin.x, origin.y, point.x, point.y, distortionValue);
 				lastAngle = Math.atan2(point.y.subtract(origin.y).toNumber(), point.x.subtract(origin.x).toNumber()) * 180 / Math.PI;
-				console.log("Before", point.x.toString(), point.y.toString(), distortionType);
 				Distortion.#fixPoint(point, relative, topX, topY, distortionType, result);
-				console.log("After", point.x.toString(), point.y.toString(), distortionType);
 				top = point.x.equals(origin.x)
 					?
 					(
@@ -1243,6 +1241,8 @@ class Transformer
 			else
 			{
 				item = list.shift();
+				if(!item.previousSibling.tagName && item.previousSibling.nodeValue.trim() === "")
+					item.parentNode.removeChild(item.previousSibling);
 				item.parentNode.removeChild(item);
 			}
 			let parser = new ExpressionParser(new TokenStream(item.getAttribute("value")));
@@ -1278,7 +1278,14 @@ class Transformer
 
 	#parseSegmentList(context, list)
 	{
-		list.forEach(i => i.parentNode.removeChild(i));
+		list.forEach(i =>
+		{
+			if(!i.previousSibling.tagName && i.previousSibling.nodeValue.trim() === "")
+				i.parentNode.removeChild(i.previousSibling);
+			i.parentNode.removeChild(i);
+
+			return;
+		});
 		context.segment = list.reduce((previous, current) =>
 		{
 			let id = current.getAttribute("id");
@@ -1367,7 +1374,7 @@ class Transformer
 						if(cursor.getAttribute("id") !== i.getAttribute("id") || target !== null)
 						{
 							let parent = cursor.parentNode;
-							if(cursor.previousSibling && !cursor.previousSibling.tagName)
+							if(cursor.previousSibling && !cursor.previousSibling.tagName && cursor.previousSibling.nodeValue.trim() === "")
 								parent.removeChild(cursor.previousSibling);
 							parent.removeChild(cursor);
 						}
