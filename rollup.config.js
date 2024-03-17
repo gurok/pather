@@ -5,6 +5,8 @@ import pkg from "./package.json";
 
 let build = pkg.files[0];
 
+let warnFiltered = (message, warn) => message.code !== 'CIRCULAR_DEPENDENCY' && (!message.cycle || !message.cycle.includes("source/class/ExpressionParser.js")) && warn(message);
+
 export default
 [
 	{
@@ -33,7 +35,8 @@ export default
 			esModule: false,
 			exports: "named",
 			sourcemap: true
-		}
+		},
+		onwarn: warnFiltered
 	},
 	// ESM and CJS
 	{
@@ -56,6 +59,7 @@ export default
 				exports: "named",
 				sourcemap: true,
 			}
-		]
+		],
+		onwarn: warnFiltered
 	}
 ];

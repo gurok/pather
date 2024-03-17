@@ -76,19 +76,21 @@ becomes:
 <path d="M 100,100 h 50 l 5,-5 l 5,10 l 5,-5 h 50 h 50 l 5,-5 l 5,10 l 5,-5 h 50" />
 ```
 
-You can also rotate a segment using the rotation operator:
+You can also rotate a segment using the distortion operator:
 
 ```
-<path d="M 100,100 bumpyLine%45" />
+<path d="M 100,100 bumpyLine%r45" />
 ```
+
+There are three available distortions: `%r` for rotation, `%h` for horizontal skew and `%v` for vertical skew. A segment can only have one distortion applied at a time.
 
 You can call a segment with named parameters that override unit values:
 
 ```
-<path d="M 100,100 bumpyLine(g=20 %=45 #=3)"
+<path d="M 100,100 bumpyLine(g=20 %r=45 #=3)"
 ```
 
-Where `%=` and `#=` are alternate syntax for the rotation operator and repetition respectively.
+Where `%r=` and `#=` are alternate syntax for the rotation operator and repetition respectively.
 
 You can also measure a  segment's width/height and use it as a value:
 

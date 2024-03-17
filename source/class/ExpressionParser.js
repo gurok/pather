@@ -2,6 +2,8 @@ import TokenStream from "./TokenStream";
 import Token from "./Token";
 import BigDecimal from "./BigDecimal";
 import Value from "./Value";
+import PathParser from "./PathParser";
+import Distortion from "./Distortion";
 
 export default class ExpressionParser
 {
@@ -65,7 +67,7 @@ export default class ExpressionParser
 		return;
 	}
 
-    parse(context, depth = 0, argumentList = {}, insideArgumentList = false, position, type)
+    parse(context, depth = 0, argumentList = {}, insideArgumentList = false, position, type, additionalTerminatorList = [])
     {
 		var result;
 		var state;
@@ -259,6 +261,11 @@ export default class ExpressionParser
 					state.reading = false;
 					continue;
 				default:
+					if(additionalTerminatorList.includes(state.current.type))
+					{
+						state.reading = false;
+						continue;
+					}
 					throw(new SyntaxError(`Unexpected token "${state.current.name}" at column ${state.current.position}`));
 			}
 			state.current = this.stream.getNext();
@@ -283,10 +290,10 @@ export default class ExpressionParser
 		{
 			current: this.stream.getCurrent(),
 			reading: true,
-			hasRotate: false,
 			hasCount: false,
 			hasArgumentList: false,
-			rotate: false,
+			distortionValue: new BigDecimal(0),
+			distorationType: Distortion.OPERATION_NONE,
 			count: false,
 			argumentList: {},
 			delimited: false
@@ -300,26 +307,33 @@ export default class ExpressionParser
 		}
 		else
 			state.count = 1;
-		state.rotate = new BigDecimal(0);
 		name = state.current.name;
 		if(result.stack.indexOf(name) === -1)
 		{
 			if(!(name in context.segment))
 				throw(new ReferenceError(`Reference to undefined section "${name}" at ${state.current.position}`));
 			segment = context.segment[name];
+			const segmentName = name;
 			state.current = this.stream.getNext();
 			while(state.reading === true && state.current)
 			{
 				switch(state.current.type)
 				{
 					case Token.TYPE_OPERATOR_ROTATE:
-						if(state.hasRotate)
-							throw(new Error(`Encountered rotation operator, but segment "${name}" rotation is already specified (${state.rotate} degrees)`));
+					case Token.TYPE_OPERATOR_SKEW_HORIZONTAL:
+					case Token.TYPE_OPERATOR_SKEW_VERTICAL:
+						if(state.distorationType !== Distortion.OPERATION_NONE)
+							throw(new Error(`Encountered distortion operator, but distortion for segment "${name}" is already specified (parameter value: ${state.distortionValue})`));
 						this.stream.getNext();
-						expResult = new ExpressionParser(this.stream).parse(context, 0, argumentList, false, {x: result.x, y: result.y}, Value.TYPE_THETA);
-						state.rotate = expResult.accumulator;
+						expResult = new ExpressionParser(this.stream).parse(context, 0, argumentList, false, {x: result.x, y: result.y}, Value.TYPE_THETA, [Token.TYPE_OPERATOR_ROTATE, Token.TYPE_OPERATOR_SKEW_HORIZONTAL, Token.TYPE_OPERATOR_SKEW_VERTICAL]);
+						state.distortionValue = expResult.accumulator;
+						state.distorationType =
+						({
+							[Token.TYPE_OPERATOR_ROTATE]: Distortion.OPERATION_ROTATE,
+							[Token.TYPE_OPERATOR_SKEW_HORIZONTAL]: Distortion.OPERATION_SKEW_HORIZONTAL,
+							[Token.TYPE_OPERATOR_SKEW_VERTICAL]: Distortion.OPERATION_SKEW_VERTICAL
+						})[state.current.type];
 						state.current = this.stream.getCurrent();
-						state.hasRotate = true;
 						continue;
 					case Token.TYPE_BRACKET:
 						if(!state.hasArgumentList)
@@ -339,6 +353,8 @@ export default class ExpressionParser
 										case Token.TYPE_IDENTIFIER:
 										case Token.TYPE_OPERATOR_ROTATE:
 										case Token.TYPE_OPERATOR_REPEAT:
+										case Token.TYPE_OPERATOR_SKEW_HORIZONTAL:
+										case Token.TYPE_OPERATOR_SKEW_VERTICAL:
 											state.delimited = false;
 											name = state.current.name;
 											type = state.current.type;
@@ -349,6 +365,10 @@ export default class ExpressionParser
 														throw(new ReferenceError(`Argument "${name}" is already defined as a segment`));
 													break;
 												case Token.TYPE_OPERATOR_ROTATE:
+												case Token.TYPE_OPERATOR_SKEW_HORIZONTAL:
+												case Token.TYPE_OPERATOR_SKEW_VERTICAL:
+													if(state.distorationType !== Distortion.OPERATION_NONE)
+														throw(new Error(`Encountered distortion operator, but distortion for segment "${segmentName}" is already specified (parameter value: ${state.distortionValue})`));
 													break;
 												case Token.TYPE_OPERATOR_REPEAT:
 													if(state.hasCount)
@@ -367,6 +387,8 @@ export default class ExpressionParser
 											{
 												[Token.TYPE_IDENTIFIER]: Value.TYPE_UNIT,
 												[Token.TYPE_OPERATOR_ROTATE]: Value.TYPE_THETA,
+												[Token.TYPE_OPERATOR_SKEW_HORIZONTAL]: Value.TYPE_THETA,
+												[Token.TYPE_OPERATOR_SKEW_VERTICAL]: Value.TYPE_THETA,
 												[Token.TYPE_OPERATOR_REPEAT]: Value.TYPE_UNIT,
 											}[type]);
 											switch(type)
@@ -375,8 +397,14 @@ export default class ExpressionParser
 													state.argumentList[name] = expResult.accumulator;
 													break;
 												case Token.TYPE_OPERATOR_ROTATE:
-													state.rotate = expResult.accumulator;
-													state.hasRotate = true;
+												case Token.TYPE_OPERATOR_SKEW_HORIZONTAL:
+												case Token.TYPE_OPERATOR_SKEW_VERTICAL:
+													state.distortionValue = expResult.accumulator;
+													state.distorationType = ({
+														[Token.TYPE_OPERATOR_ROTATE]: Distortion.OPERATION_ROTATE,
+														[Token.TYPE_OPERATOR_SKEW_HORIZONTAL]: Distortion.OPERATION_SKEW_HORIZONTAL,
+														[Token.TYPE_OPERATOR_SKEW_VERTICAL]: Distortion.OPERATION_SKEW_VERTICAL
+													})[type];
 													break;
 												case Token.TYPE_OPERATOR_REPEAT:
 													state.count = expResult.accumulator.toNumber();
@@ -424,7 +452,7 @@ export default class ExpressionParser
 			for(index = 1; index <= state.count; index++)
 			{
 				inner = new PathParser(new TokenStream(segment));
-				inner.parse(context, result, state.rotate, index, state.argumentList);
+				inner.parse(context, result, state.distorationType, state.distortionValue, index, state.argumentList);
 				result.stack.pop();
 			}
 			state.reading = false;

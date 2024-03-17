@@ -57,7 +57,7 @@ export function transform(text, configuration, require)
 		precision: 3
 	};
 
-	while(reading && valid && parameter[0].startsWith("--"))
+	while(reading && valid && parameter[0] && parameter[0].startsWith("--"))
 		switch(parameter[0])
 		{
 			case "--precision":
@@ -88,6 +88,10 @@ export function transform(text, configuration, require)
 				configuration.combinePathCommands = true;
 				parameter.shift();
 				break;
+			case "--extract":
+				configuration.extract = true;
+				parameter.shift();
+				break;
 			case "--":
 				parameter.shift();
 			default:
@@ -98,7 +102,7 @@ export function transform(text, configuration, require)
 	{
 		console.log(
 `
-Usage: npm start -- [options] transform <source> <destination> [units...]
+Usage: npm start -- [options] <source> <destination> [units...]
 
 source       An unprocessed SVG file containing Pather commands
 destination  Desired filename of the processed output
@@ -107,6 +111,7 @@ options      One or more of the following switches:
   --stripWhitespace <path|xml|all>  Strip whitespace from within path data, between XML tags or both (all)
   --stripComments                   Strip XML comments from the output document
   --combinePathCommands             Combine repeated commands in path data, e.g. h 30 h 30 becomes h 60
+  --extract                         Extract all elements with an ID to individual files (destination is a directory)
 units        Variable values to be passed to the Pather environment
              Name/value pairs separated by "=", e.g. myUnit=3 myOtherUnit=4.2
 `
@@ -115,7 +120,7 @@ units        Variable values to be passed to the Pather environment
 	else
 	{
 		let source = parameter.shift();
-		let destination = parameter.shift();
+		configuration.destination = parameter.shift();
 		configuration.unit = {};
 		reading = true;
 		while(reading && parameter.length) {
@@ -149,7 +154,15 @@ units        Variable values to be passed to the Pather environment
 			configuration.base = path.dirname(source) + path.sep;
 			const data = fs.readFileSync(source, {encoding: "utf-8", flag: "r"});
 			let t = new Transformer(data);
-			fs.writeFileSync(destination, t.transform(configuration), {encoding: "utf-8"});
+			let output = t.transform(configuration);
+			output.forEach(([i, j]) =>
+			{
+				if(!fs.existsSync(path.dirname(i)))
+					fs.mkdirSync(path.dirname(i));
+				fs.writeFileSync(i, j, {encoding: "utf-8"})
+
+				return;
+			});
 		}
 	}
 

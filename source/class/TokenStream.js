@@ -119,7 +119,17 @@ export default class TokenStream
         },
         {
             type: Token.TYPE_OPERATOR_ROTATE,
-            expression: new RegExp("^%", ""),
+            expression: new RegExp("^%r", ""),
+            handler: value => value
+        },
+        {
+            type: Token.TYPE_OPERATOR_SKEW_HORIZONTAL,
+            expression: new RegExp("^%h", ""),
+            handler: value => value
+        },
+        {
+            type: Token.TYPE_OPERATOR_SKEW_VERTICAL,
+            expression: new RegExp("^%v", ""),
             handler: value => value
         },
         {

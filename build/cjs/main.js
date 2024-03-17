@@ -4,22 +4,24 @@ require('fs');
 
 class Token
 {
-    static TYPE_NUMBER             = 1;
-    static TYPE_COMMAND            = 2;
-    static TYPE_DELIMITER          = 3;
-    static TYPE_WHITESPACE         = 4;
-    static TYPE_IDENTIFIER         = 5;
-    static TYPE_BRACKET            = 6;
-    static TYPE_END                = 7;
-    static TYPE_OPERATOR_ADD       = 8;
-    static TYPE_OPERATOR_SUBTRACT  = 9;
-    static TYPE_OPERATOR_MULTIPLY  = 10;
-    static TYPE_OPERATOR_DIVIDE    = 11;
-    static TYPE_OPERATOR_ROTATE    = 12;
-    static TYPE_OPERATOR_FIX       = 13;
-    static TYPE_OPERATOR_MEASURE   = 14;
-    static TYPE_OPERATOR_ASSIGN    = 15;
-    static TYPE_OPERATOR_REPEAT    = 16;
+    static TYPE_NUMBER                    = 1;
+    static TYPE_COMMAND                   = 2;
+    static TYPE_DELIMITER                 = 3;
+    static TYPE_WHITESPACE                = 4;
+    static TYPE_IDENTIFIER                = 5;
+    static TYPE_BRACKET                   = 6;
+    static TYPE_END                       = 7;
+    static TYPE_OPERATOR_ADD              = 8;
+    static TYPE_OPERATOR_SUBTRACT         = 9;
+    static TYPE_OPERATOR_MULTIPLY         = 10;
+    static TYPE_OPERATOR_DIVIDE           = 11;
+    static TYPE_OPERATOR_ROTATE           = 12;
+    static TYPE_OPERATOR_SKEW_HORIZONTAL  = 13;
+    static TYPE_OPERATOR_SKEW_VERTICAL    = 14;
+    static TYPE_OPERATOR_FIX              = 15;
+    static TYPE_OPERATOR_MEASURE          = 16;
+    static TYPE_OPERATOR_ASSIGN           = 17;
+    static TYPE_OPERATOR_REPEAT           = 18;
 
     constructor(type, name, value, position)
     {
@@ -263,7 +265,17 @@ class TokenStream
         },
         {
             type: Token.TYPE_OPERATOR_ROTATE,
-            expression: new RegExp("^%", ""),
+            expression: new RegExp("^%r", ""),
+            handler: value => value
+        },
+        {
+            type: Token.TYPE_OPERATOR_SKEW_HORIZONTAL,
+            expression: new RegExp("^%h", ""),
+            handler: value => value
+        },
+        {
+            type: Token.TYPE_OPERATOR_SKEW_VERTICAL,
+            expression: new RegExp("^%v", ""),
             handler: value => value
         },
         {
@@ -345,6 +357,411 @@ class TokenStream
     }
 }
 
+class Distortion
+{
+	static OPERATION_NONE = 0;
+	static OPERATION_ROTATE = 1;
+	static OPERATION_SKEW_HORIZONTAL = 2;
+	static OPERATION_SKEW_VERTICAL = 3;
+
+	static #rotate(x0, y0, x1, y1, distortionValue)
+	{
+		var cosine;
+		var sine;
+
+		x1 = x1.subtract(x0);
+		y1 = y1.subtract(y0);
+		distortionValue = (distortionValue.toNumber() % 360) * Math.PI / 180;
+		cosine = Math.cos(distortionValue);
+		sine = Math.sin(distortionValue);
+		if(Math.abs(cosine - sine) < Number.EPSILON * 2)
+			sine = cosine;
+		else
+			if(Math.abs(cosine + sine) < Number.EPSILON * 2)
+				cosine = sine;
+		if(Math.abs(cosine) < Number.EPSILON)
+			cosine = 0;
+		if(Math.abs(sine) < Number.EPSILON)
+			sine = 0;
+	
+		return(
+		{
+			x: x0.add(x1.multiplyBy(cosine)).subtract(y1.multiplyBy(sine)),
+			y: y0.add(y1.multiplyBy(cosine)).add(x1.multiplyBy(sine))
+		});
+	};
+
+	static #fixPoint(point, relative, topX, topY, distortionType, result)
+	{
+		if(distortionType === Distortion.OPERATION_SKEW_VERTICAL)
+			point.x = topX.value;
+		else
+			if(topX.fixed)
+				point.x = relative ? topX.value.subtract(result.x) : topX.value;
+		if(distortionType === Distortion.OPERATION_SKEW_HORIZONTAL)
+			point.y = topY.value;
+		else
+			if(topY.fixed)
+				point.y = relative ? topY.value.subtract(result.y) : topY.value;
+
+		return;
+	}
+
+	static applyDistortion(context, top, result, distortionType, distortionValue)
+	{
+		let origin;
+		let point;
+		let command;
+		let relative;
+		let point1;
+		let point2;
+		let last;
+		let lastAngle;
+
+		command = top[0].toLowerCase();
+		relative = top[0].toLowerCase() === top[0];
+		origin =
+		{
+			x: relative ? new BigDecimal(0) : result.x,
+			y: relative ? new BigDecimal(0) : result.y
+		};
+		if(result.pending)
+			throw(new SyntaxError(`Too few arguments for command ${top[0]}`));
+		if(result.fixNext)
+			throw(new SyntaxError(`Dangling fix operator after command ${top[0]}`));
+		// TODO: Eventually, all values will need to be rounded just beyond this point
+		switch(command)
+		{
+			case "a":
+				point =
+				{
+					x: top[6].value,
+					y: top[7].value
+				};
+				if(distortionType !== Distortion.OPERATION_NONE)
+					point = Distortion.#rotate(origin.x, origin.y, point.x, point.y, distortionValue);
+				Distortion.#fixPoint(point, relative, top[6], top[7], distortionType, result);
+				top =
+				[
+					top[0],
+					top[1].value,
+					top[2].value,
+					top[3].fixed ? top[3].value : top[3].value.add(distortionValue),
+					top[4].value,
+					top[5].value,
+					point.x,
+					point.y
+				];
+				break;
+			case "c":
+				point1 =
+				{
+					x: top[1].value,
+					y: top[2].value
+				};
+				point2 =
+				{
+					x: top[3].value,
+					y: top[4].value
+				};
+				point =
+				{
+					x: top[5].value,
+					y: top[6].value
+				};
+				if(distortionType !== Distortion.OPERATION_NONE)
+				{
+					point1 = Distortion.#rotate(origin.x, origin.y, point1.x, point1.y, distortionValue);
+					point2 = Distortion.#rotate(origin.x, origin.y, point2.x, point2.y, distortionValue);
+					point = Distortion.#rotate(origin.x, origin.y, point.x, point.y, distortionValue);
+				}
+				Distortion.#fixPoint(point, relative, top[5], top[6], distortionType, result);
+				top =
+				[
+					top[0],
+					top[1].fixed ? (relative ? top[1].value.subtract(result.x) : top[1].value) : point1.x,
+					top[2].fixed ? (relative ? top[2].value.subtract(result.y) : top[2].value) : point1.y,
+					top[3].fixed ? (relative ? top[3].value.subtract(result.x) : top[3].value) : point2.x,
+					top[4].fixed ? (relative ? top[4].value.subtract(result.y) : top[4].value) : point2.y,
+					point.x,
+					point.y
+				];
+				break;
+			case "s":
+			case "q":
+				point1 =
+				{
+					x: top[1].value,
+					y: top[2].value
+				};
+				point =
+				{
+					x: top[3].value,
+					y: top[4].value
+				};
+				if(distortionType !== Distortion.OPERATION_NONE)
+				{
+					point1 = Distortion.#rotate(origin.x, origin.y, point1.x, point1.y, distortionValue);
+					point = Distortion.#rotate(origin.x, origin.y, point.x, point.y, distortionValue);
+				}
+				Distortion.#fixPoint(point, relative, top[3], top[4], distortionType, result);
+				top =
+				[
+					top[0],
+					point1.x,
+					point1.y,
+					point.x,
+					point.y
+				];
+				break;
+			case "l":
+			case "h":
+			case "v":
+				let topX = command === "v" ? {value: new BigDecimal(origin.x), fixed: true} : top[1];
+				let topY = command === "h" ? {value: new BigDecimal(origin.y), fixed: true} : (command === "v" ? top[1] : top[2]);
+				point =
+				{
+					x: topX.value,
+					y: topY.value
+				};
+				if(distortionType !== Distortion.OPERATION_NONE)
+					point = Distortion.#rotate(origin.x, origin.y, point.x, point.y, distortionValue);
+				lastAngle = Math.atan2(point.y.subtract(origin.y).toNumber(), point.x.subtract(origin.x).toNumber()) * 180 / Math.PI;
+				console.log("Before", point.x.toString(), point.y.toString(), distortionType);
+				Distortion.#fixPoint(point, relative, topX, topY, distortionType, result);
+				console.log("After", point.x.toString(), point.y.toString(), distortionType);
+				top = point.x.equals(origin.x)
+					?
+					(
+						point.y.equals(origin.y)
+						?
+							null
+						:
+							["v", point.y]
+					)
+					:
+					(
+						point.y.equals(origin.y)
+						?
+							["h", point.x]
+						:
+							["l", point.x, point.y]
+					);
+				if(top)
+				{
+					if(context.optimisation.path.combineCommands && result.sequence.length > 0)
+					{
+						last = result.sequence[result.sequence.length - 1];
+						if(last[0].toLowerCase() === top[0].toLowerCase() && lastAngle === result.lastAngle)
+						{
+							if(relative)
+							{
+								if(last.length > 2)
+									last[2] = last[2].add(top[2]);
+								last[1] = last[1].add(top[1]);
+								top = null;
+							}
+							else
+								result.sequnce.pop();
+						}
+					}
+					result.lastAngle = lastAngle;
+				}
+				break;
+			case "m":
+			case "t":
+				point =
+				{
+					x: top[1].value,
+					y: top[2].value
+				};
+				if(distortionType !== Distortion.OPERATION_NONE)
+					point = Distortion.#rotate(origin.x, origin.y, point.x, point.y, distortionValue);
+				Distortion.#fixPoint(point, relative, top[1], top[2], distortionType, result);
+				top = [top[0], point.x, point.y];
+				if(context.optimisation.path.combineCommands && command === "m" && result.sequence.length > 0)
+				{
+					last = result.sequence[result.sequence.length - 1];
+					if(last[0].toLowerCase() === "m")
+					{
+						if(relative)
+						{
+							last[1] = last[1].add(top[1]);
+							last[2] = last[2].add(top[2]);
+							top = null;
+						}
+						else
+							result.sequnce.pop();
+					}
+				}
+				break;
+			case "z":
+				top = ["z"];
+				result.x = new BigDecimal(result.originX);
+				result.y = new BigDecimal(result.originY);
+				result.lastAngle = null;
+				break;
+		}
+		if(command !== "z")
+		{
+			result.x = relative ? result.x.add(point.x) : point.x;
+			result.y = relative ? result.y.add(point.y) : point.y;
+		}
+		if(command === "m")
+		{
+			result.originX = new BigDecimal(result.x);
+			result.originY = new BigDecimal(result.y);
+		}
+		if(top)
+		{
+			if(!relative)
+				top[0] = top[0].toUpperCase();
+			/* TODO: Primitive optimiser someday? */
+			result.sequence.push(top);
+		}
+
+		return;
+	}
+}
+
+class PathParser
+{
+	constructor(stream)
+	{
+		this.stream = stream;
+
+		return;
+	}
+
+	static resultToString(result, precision = BigDecimal.LIMIT_PRECISION)
+	{
+		return(result.sequence.map(i => "" + i[0].toString() + (i.length > 1 ? " " + i.slice(1).join(",") : "")).join(" "));
+	}
+
+	parseList(context, result = Value.getEmptyResult(), limit)
+	{
+		let state;
+
+		state =
+		{
+			current: this.stream.getCurrent(),
+			reading: true,
+			index: 0
+		};
+
+		while(state.reading && state.current && state.index < limit)
+		{
+			switch(state.current.type)
+			{
+				case Token.TYPE_WHITESPACE:
+				case Token.TYPE_DELIMITER:
+					break;
+				case Token.TYPE_END:
+					state.reading = false;
+					break;
+				default:
+					let expResult = new ExpressionParser(this.stream).parse(context, 0, [], false, {x: result.x, y: result.y}, Value.TYPE_UNIT);
+					result.sequence.push([expResult.accumulator]);
+					result.index++;
+					state.current = this.stream.getCurrent();
+					continue;
+			}
+			state.current = this.stream.getNext();
+		}
+
+		return(result);
+	}
+
+	parse(context, result = Value.getEmptyResult(), distortionType = Distortion.OPERATION_NONE, distortionValue = new BigDecimal(0), index = 1, argumentList)
+	{
+		let state;
+		let top;
+		let invoked;
+		let next;
+
+		state =
+		{
+			current: this.stream.getCurrent(),
+			reading: true
+		};
+
+		while(state.reading && state.current)
+		{
+			switch(state.current.type)
+			{
+				case Token.TYPE_COMMAND:
+					if(result.arity === null && state.current.name.toLowerCase() !== "m")
+						throw(new SyntaxError("Paths must begin with a Move To command"));
+					if(top)
+						Distortion.applyDistortion(context, top, result, distortionType, distortionValue);
+					result.arity = state.current.value;
+					result.pending = result.arity.length;
+					top = [state.current.name];
+					break;
+				case Token.TYPE_OPERATOR_FIX:
+					result.fixNext = true;
+					break;
+				case Token.TYPE_WHITESPACE:
+				case Token.TYPE_DELIMITER:
+					break;
+				case Token.TYPE_END:
+					if(top)
+						Distortion.applyDistortion(context, top, result, distortionType, distortionValue);
+					state.reading = false;
+					break;
+				case Token.TYPE_IDENTIFIER:
+				case Token.TYPE_NUMBER:
+					if(state.current.type === Token.TYPE_NUMBER)
+					{
+						next = this.stream.peekNext();
+						invoked = next.type === Token.TYPE_IDENTIFIER && context.segment[next.name];
+					}
+					else
+						invoked = context.segment[state.current.name];
+					if(invoked)
+					{
+						if(top)
+						{
+							Distortion.applyDistortion(context, top, result, distortionType, distortionValue);
+							top = null;
+						}
+						new ExpressionParser(this.stream).parseInvocation(context, result, argumentList);
+						state.current = this.stream.getCurrent();
+						continue;
+					}
+				default:
+					if(!top)
+						throw(new Error(`Expected command, but found "${state.current.name}"`));
+					if(!result.pending)
+					{
+						Distortion.applyDistortion(context, top, result, distortionType, distortionValue);
+						result.pending = result.arity.length;
+						top = [top[0]];
+					}
+					if(!result.pending)
+						throw(new SyntaxError(`Too many parameters supplied to command "${top[0]}"`));					if(top[0].toLowerCase() === "a" && (result.pending === 4 || result.pending === 3) && state.current.type === Token.TYPE_NUMBER && state.current.name.length > 1 && ["0", "1"].indexOf(state.current.name.substr(0, 1)) !== -1)
+					{
+						top.push({fixed: result.fixNext, value: new BigDecimal(state.current.name.substr(0, 1))});
+						state.current.name = state.current.name.substr(1);
+						state.current.value = new BigDecimal(state.current.name);
+					}
+					else
+					{
+						let expResult = new ExpressionParser(this.stream).parse(context, 0, argumentList, false, {x: result.x, y: result.y}, result.arity[result.arity.length - result.pending]);
+						top.push({fixed: result.fixNext, value: expResult.accumulator});
+					}
+					result.fixNext = false;
+					result.pending--;
+					state.current = this.stream.getCurrent();
+					continue;
+			}
+			state.current = this.stream.getNext();
+		}
+
+		return(result);
+	}
+}
+
 class ExpressionParser
 {
     static #OPERATION_EVALUATE  = 1;
@@ -407,7 +824,7 @@ class ExpressionParser
 		return;
 	}
 
-    parse(context, depth = 0, argumentList = {}, insideArgumentList = false, position, type)
+    parse(context, depth = 0, argumentList = {}, insideArgumentList = false, position, type, additionalTerminatorList = [])
     {
 		var result;
 		var state;
@@ -601,6 +1018,11 @@ class ExpressionParser
 					state.reading = false;
 					continue;
 				default:
+					if(additionalTerminatorList.includes(state.current.type))
+					{
+						state.reading = false;
+						continue;
+					}
 					throw(new SyntaxError(`Unexpected token "${state.current.name}" at column ${state.current.position}`));
 			}
 			state.current = this.stream.getNext();
@@ -625,10 +1047,10 @@ class ExpressionParser
 		{
 			current: this.stream.getCurrent(),
 			reading: true,
-			hasRotate: false,
 			hasCount: false,
 			hasArgumentList: false,
-			rotate: false,
+			distortionValue: new BigDecimal(0),
+			distorationType: Distortion.OPERATION_NONE,
 			count: false,
 			argumentList: {},
 			delimited: false
@@ -642,26 +1064,33 @@ class ExpressionParser
 		}
 		else
 			state.count = 1;
-		state.rotate = new BigDecimal(0);
 		name = state.current.name;
 		if(result.stack.indexOf(name) === -1)
 		{
 			if(!(name in context.segment))
 				throw(new ReferenceError(`Reference to undefined section "${name}" at ${state.current.position}`));
 			segment = context.segment[name];
+			const segmentName = name;
 			state.current = this.stream.getNext();
 			while(state.reading === true && state.current)
 			{
 				switch(state.current.type)
 				{
 					case Token.TYPE_OPERATOR_ROTATE:
-						if(state.hasRotate)
-							throw(new Error(`Encountered rotation operator, but segment "${name}" rotation is already specified (${state.rotate} degrees)`));
+					case Token.TYPE_OPERATOR_SKEW_HORIZONTAL:
+					case Token.TYPE_OPERATOR_SKEW_VERTICAL:
+						if(state.distorationType !== Distortion.OPERATION_NONE)
+							throw(new Error(`Encountered distortion operator, but distortion for segment "${name}" is already specified (parameter value: ${state.distortionValue})`));
 						this.stream.getNext();
-						expResult = new ExpressionParser(this.stream).parse(context, 0, argumentList, false, {x: result.x, y: result.y}, Value.TYPE_THETA);
-						state.rotate = expResult.accumulator;
+						expResult = new ExpressionParser(this.stream).parse(context, 0, argumentList, false, {x: result.x, y: result.y}, Value.TYPE_THETA, [Token.TYPE_OPERATOR_ROTATE, Token.TYPE_OPERATOR_SKEW_HORIZONTAL, Token.TYPE_OPERATOR_SKEW_VERTICAL]);
+						state.distortionValue = expResult.accumulator;
+						state.distorationType =
+						({
+							[Token.TYPE_OPERATOR_ROTATE]: Distortion.OPERATION_ROTATE,
+							[Token.TYPE_OPERATOR_SKEW_HORIZONTAL]: Distortion.OPERATION_SKEW_HORIZONTAL,
+							[Token.TYPE_OPERATOR_SKEW_VERTICAL]: Distortion.OPERATION_SKEW_VERTICAL
+						})[state.current.type];
 						state.current = this.stream.getCurrent();
-						state.hasRotate = true;
 						continue;
 					case Token.TYPE_BRACKET:
 						if(!state.hasArgumentList)
@@ -681,6 +1110,8 @@ class ExpressionParser
 										case Token.TYPE_IDENTIFIER:
 										case Token.TYPE_OPERATOR_ROTATE:
 										case Token.TYPE_OPERATOR_REPEAT:
+										case Token.TYPE_OPERATOR_SKEW_HORIZONTAL:
+										case Token.TYPE_OPERATOR_SKEW_VERTICAL:
 											state.delimited = false;
 											name = state.current.name;
 											type = state.current.type;
@@ -691,6 +1122,10 @@ class ExpressionParser
 														throw(new ReferenceError(`Argument "${name}" is already defined as a segment`));
 													break;
 												case Token.TYPE_OPERATOR_ROTATE:
+												case Token.TYPE_OPERATOR_SKEW_HORIZONTAL:
+												case Token.TYPE_OPERATOR_SKEW_VERTICAL:
+													if(state.distorationType !== Distortion.OPERATION_NONE)
+														throw(new Error(`Encountered distortion operator, but distortion for segment "${segmentName}" is already specified (parameter value: ${state.distortionValue})`));
 													break;
 												case Token.TYPE_OPERATOR_REPEAT:
 													if(state.hasCount)
@@ -709,6 +1144,8 @@ class ExpressionParser
 											{
 												[Token.TYPE_IDENTIFIER]: Value.TYPE_UNIT,
 												[Token.TYPE_OPERATOR_ROTATE]: Value.TYPE_THETA,
+												[Token.TYPE_OPERATOR_SKEW_HORIZONTAL]: Value.TYPE_THETA,
+												[Token.TYPE_OPERATOR_SKEW_VERTICAL]: Value.TYPE_THETA,
 												[Token.TYPE_OPERATOR_REPEAT]: Value.TYPE_UNIT,
 											}[type]);
 											switch(type)
@@ -717,8 +1154,14 @@ class ExpressionParser
 													state.argumentList[name] = expResult.accumulator;
 													break;
 												case Token.TYPE_OPERATOR_ROTATE:
-													state.rotate = expResult.accumulator;
-													state.hasRotate = true;
+												case Token.TYPE_OPERATOR_SKEW_HORIZONTAL:
+												case Token.TYPE_OPERATOR_SKEW_VERTICAL:
+													state.distortionValue = expResult.accumulator;
+													state.distorationType = ({
+														[Token.TYPE_OPERATOR_ROTATE]: Distortion.OPERATION_ROTATE,
+														[Token.TYPE_OPERATOR_SKEW_HORIZONTAL]: Distortion.OPERATION_SKEW_HORIZONTAL,
+														[Token.TYPE_OPERATOR_SKEW_VERTICAL]: Distortion.OPERATION_SKEW_VERTICAL
+													})[type];
 													break;
 												case Token.TYPE_OPERATOR_REPEAT:
 													state.count = expResult.accumulator.toNumber();
@@ -766,7 +1209,7 @@ class ExpressionParser
 			for(index = 1; index <= state.count; index++)
 			{
 				inner = new PathParser(new TokenStream(segment));
-				inner.parse(context, result, state.rotate, index, state.argumentList);
+				inner.parse(context, result, state.distorationType, state.distortionValue, index, state.argumentList);
 				result.stack.pop();
 			}
 			state.reading = false;
@@ -775,399 +1218,6 @@ class ExpressionParser
 			throw(new ReferenceError(`Segment ${state.current.name} cannot call itself`));
 	
 		return;
-	}
-}
-
-class PathParser$1
-{
-	constructor(stream)
-	{
-		this.stream = stream;
-	}
-
-	static resultToString(result, precision = BigDecimal.LIMIT_PRECISION)
-	{
-		return(result.sequence.map(i => "" + i[0].toString() + (i.length > 1 ? " " + i.slice(1).join(",") : "")).join(" "));
-	}
-
-	static #rotate(x0, y0, x1, y1, angle)
-	{
-		var cosine;
-		var sine;
-
-		x1 = x1.subtract(x0);
-		y1 = y1.subtract(y0);
-		angle = (angle.toNumber() % 360) * Math.PI / 180;
-		cosine = Math.cos(angle);
-		sine = Math.sin(angle);
-		if(Math.abs(cosine - sine) < Number.EPSILON * 2)
-			sine = cosine;
-		else
-			if(Math.abs(cosine + sine) < Number.EPSILON * 2)
-				cosine = sine;
-		if(Math.abs(cosine) < Number.EPSILON)
-			cosine = 0;
-		if(Math.abs(sine) < Number.EPSILON)
-			sine = 0;
-	
-		return(
-		{
-			x: x0.add(x1.multiplyBy(cosine)).subtract(y1.multiplyBy(sine)),
-			y: y0.add(y1.multiplyBy(cosine)).add(x1.multiplyBy(sine))
-		});
-	};
-
-	static #applyRotation(context, top, result, angle)
-	{
-		let origin;
-		let point;
-		let command;
-		let relative;
-		let point1;
-		let point2;
-		let last;
-		let lastAngle;
-
-		command = top[0].toLowerCase();
-		relative = top[0].toLowerCase() === top[0];
-		origin =
-		{
-			x: relative ? new BigDecimal(0) : result.x,
-			y: relative ? new BigDecimal(0) : result.y
-		};
-		if(result.pending)
-			throw(new SyntaxError(`Too few arguments for command ${top[0]}`));
-		if(result.fixNext)
-			throw(new SyntaxError(`Dangling fix operator after command ${top[0]}`));
-		// TODO: Eventually, all values will need to be rounded just beyond this point
-		switch(command)
-		{
-			case "a":
-				point =
-				{
-					x: top[6].value,
-					y: top[7].value
-				};
-				if(angle)
-					point = PathParser$1.#rotate(origin.x, origin.y, point.x, point.y, angle);
-				if(top[6].fixed)
-					point.x = relative ? top[6].value.subtract(result.x) : top[6].value;
-				if(top[7].fixed)
-					point.y = relative ? top[7].value.subtract(result.y) : top[7].value;
-				top =
-				[
-					top[0],
-					top[1].value,
-					top[2].value,
-					top[3].fixed ? top[3].value : top[3].value.add(angle),
-					top[4].value,
-					top[5].value,
-					point.x,
-					point.y
-				];
-				break;
-			case "c":
-				point1 =
-				{
-					x: top[1].value,
-					y: top[2].value
-				};
-				point2 =
-				{
-					x: top[3].value,
-					y: top[4].value
-				};
-				point =
-				{
-					x: top[5].value,
-					y: top[6].value
-				};
-				if(angle)
-				{
-					point1 = PathParser$1.#rotate(origin.x, origin.y, point1.x, point1.y, angle);
-					point2 = PathParser$1.#rotate(origin.x, origin.y, point2.x, point2.y, angle);
-					point = PathParser$1.#rotate(origin.x, origin.y, point.x, point.y, angle);
-				}
-				if(top[5].fixed)
-					point.x = relative ? top[5].value.subtract(result.x) : top[5].value;
-				if(top[6].fixed)
-					point.y = relative ? top[6].value.subtract(result.y) : top[6].value;
-				top =
-				[
-					top[0],
-					top[1].fixed ? (relative ? top[1].value.subtract(result.x) : top[1].value) : point1.x,
-					top[2].fixed ? (relative ? top[2].value.subtract(result.y) : top[2].value) : point1.y,
-					top[3].fixed ? (relative ? top[3].value.subtract(result.x) : top[3].value) : point2.x,
-					top[4].fixed ? (relative ? top[4].value.subtract(result.y) : top[4].value) : point2.y,
-					point.x,
-					point.y
-				];
-				break;
-			case "s":
-			case "q":
-				point1 =
-				{
-					x: top[1].value,
-					y: top[2].value
-				};
-				point =
-				{
-					x: top[3].value,
-					y: top[4].value
-				};
-				if(angle)
-				{
-					point1 = PathParser$1.#rotate(origin.x, origin.y, point1.x, point1.y, angle);
-					point = PathParser$1.#rotate(origin.x, origin.y, point.x, point.y, angle);
-				}
-				if(top[3].fixed)
-					point.x = relative ? top[3].value.subtract(result.x) : top[3].value;
-				if(top[4].fixed)
-					point.y = relative ? top[4].value.subtract(result.y) : top[4].value;
-				top =
-				[
-					top[0],
-					point1.x,
-					point1.y,
-					point.x,
-					point.y
-				];
-				break;
-			case "l":
-			case "h":
-			case "v":
-				point =
-				{
-					x: command === "v" ? new BigDecimal(origin.x) : top[1].value,
-					y: command === "h" ? new BigDecimal(origin.y) : (command === "v" ? top[1].value : top[2].value)
-				};
-				if(angle)
-					point = PathParser$1.#rotate(origin.x, origin.y, point.x, point.y, angle);
-				lastAngle = Math.atan2(point.y.subtract(origin.y).toNumber(), point.x.subtract(origin.x).toNumber()) * 180 / Math.PI;
-				if(top[1].fixed)
-					if(command === "v")
-						point.y = relative ? top[1].value.subtract(result.y) : top[1].value;
-					else
-						point.x = relative ? top[1].value.subtract(result.x) : top[1].value;
-				if(command === "l" && top[2].fixed)
-					point.y = relative ? top[2].value.subtract(result.y) : top[2].value;
-				top = point.x.equals(origin.x)
-					?
-					(
-						point.y.equals(origin.y)
-						?
-							null
-						:
-							["v", point.y]
-					)
-					:
-					(
-						point.y.equals(origin.y)
-						?
-							["h", point.x]
-						:
-							["l", point.x, point.y]
-					);
-				if(top)
-				{
-					if(context.optimisation.path.combineCommands && result.sequence.length > 0)
-					{
-						last = result.sequence[result.sequence.length - 1];
-						if(last[0].toLowerCase() === top[0].toLowerCase() && lastAngle === result.lastAngle)
-						{
-							if(relative)
-							{
-								if(last.length > 2)
-									last[2] = last[2].add(top[2]);
-								last[1] = last[1].add(top[1]);
-								top = null;
-							}
-							else
-								result.sequnce.pop();
-						}
-					}
-					result.lastAngle = lastAngle;
-				}
-				break;
-			case "m":
-			case "t":
-				point =
-				{
-					x: top[1].value,
-					y: top[2].value
-				};
-				if(angle)
-					point = PathParser$1.#rotate(origin.x, origin.y, point.x, point.y, angle);
-				if(top[1].fixed)
-					point.x = relative ? top[1].value.subtract(result.x) : top[1].value;
-				if(top[2].fixed)
-					point.y = relative ? top[2].value.subtract(result.y) : top[2].value;
-				top = [top[0], point.x, point.y];
-				if(context.optimisation.path.combineCommands && command === "m" && result.sequence.length > 0)
-				{
-					last = result.sequence[result.sequence.length - 1];
-					if(last[0].toLowerCase() === "m")
-					{
-						if(relative)
-						{
-							last[1] = last[1].add(top[1]);
-							last[2] = last[2].add(top[2]);
-							top = null;
-						}
-						else
-							result.sequnce.pop();
-					}
-				}
-				break;
-			case "z":
-				top = ["z"];
-				result.x = new BigDecimal(result.originX);
-				result.y = new BigDecimal(result.originY);
-				result.lastAngle = null;
-				break;
-		}
-		if(command !== "z")
-		{
-			result.x = relative ? result.x.add(point.x) : point.x;
-			result.y = relative ? result.y.add(point.y) : point.y;
-		}
-		if(command === "m")
-		{
-			result.originX = new BigDecimal(result.x);
-			result.originY = new BigDecimal(result.y);
-		}
-		if(top)
-		{
-			if(!relative)
-				top[0] = top[0].toUpperCase();
-			/* TODO: Primitive optimiser someday? */
-			result.sequence.push(top);
-		}
-
-		return;
-	}
-
-	parseList(context, result = Value.getEmptyResult(), limit)
-	{
-		let state;
-
-		state =
-		{
-			current: this.stream.getCurrent(),
-			reading: true,
-			index: 0
-		};
-
-		while(state.reading && state.current && state.index < limit)
-		{
-			switch(state.current.type)
-			{
-				case Token.TYPE_WHITESPACE:
-				case Token.TYPE_DELIMITER:
-					break;
-				case Token.TYPE_END:
-					state.reading = false;
-					break;
-				default:
-					let expResult = new ExpressionParser(this.stream).parse(context, 0, [], false, {x: result.x, y: result.y}, Value.TYPE_UNIT);
-					result.sequence.push([expResult.accumulator]);
-					result.index++;
-					state.current = this.stream.getCurrent();
-					continue;
-			}
-			state.current = this.stream.getNext();
-		}
-
-		return(result);
-	}
-
-	parse(context, result = Value.getEmptyResult(), rotate = new BigDecimal(0), index = 1, argumentList)
-	{
-		let state;
-		let top;
-		let invoked;
-		let next;
-
-		state =
-		{
-			current: this.stream.getCurrent(),
-			reading: true
-		};
-
-		while(state.reading && state.current)
-		{
-			switch(state.current.type)
-			{
-				case Token.TYPE_COMMAND:
-					if(result.arity === null && state.current.name.toLowerCase() !== "m")
-						throw(new SyntaxError("Paths must begin with a Move To command"));
-					if(top)
-						PathParser$1.#applyRotation(context, top, result, rotate);
-					result.arity = state.current.value;
-					result.pending = result.arity.length;
-					top = [state.current.name];
-					break;
-				case Token.TYPE_OPERATOR_FIX:
-					result.fixNext = true;
-					break;
-				case Token.TYPE_WHITESPACE:
-				case Token.TYPE_DELIMITER:
-					break;
-				case Token.TYPE_END:
-					if(top)
-						PathParser$1.#applyRotation(context, top, result, rotate);
-					state.reading = false;
-					break;
-				case Token.TYPE_IDENTIFIER:
-				case Token.TYPE_NUMBER:
-					if(state.current.type === Token.TYPE_NUMBER)
-					{
-						next = this.stream.peekNext();
-						invoked = next.type === Token.TYPE_IDENTIFIER && context.segment[next.name];
-					}
-					else
-						invoked = context.segment[state.current.name];
-					if(invoked)
-					{
-						if(top)
-						{
-							PathParser$1.#applyRotation(context, top, result, rotate);
-							top = null;
-						}
-						new ExpressionParser(this.stream).parseInvocation(context, result, argumentList);
-						state.current = this.stream.getCurrent();
-						continue;
-					}
-				default:
-					if(!top)
-						throw(new Error(`Expected command, but found "${state.current.name}"`));
-					if(!result.pending)
-					{
-						PathParser$1.#applyRotation(context, top, result, rotate);
-						result.pending = result.arity.length;
-						top = [top[0]];
-					}
-					if(!result.pending)
-						throw(new SyntaxError(`Too many parameters supplied to command "${top[0]}"`));					if(top[0].toLowerCase() === "a" && (result.pending === 4 || result.pending === 3) && state.current.type === Token.TYPE_NUMBER && state.current.name.length > 1 && ["0", "1"].indexOf(state.current.name.substr(0, 1)) !== -1)
-					{
-						top.push({fixed: result.fixNext, value: new BigDecimal(state.current.name.substr(0, 1))});
-						state.current.name = state.current.name.substr(1);
-						state.current.value = new BigDecimal(state.current.name);
-					}
-					else
-					{
-						let expResult = new ExpressionParser(this.stream).parse(context, 0, argumentList, false, {x: result.x, y: result.y}, result.arity[result.arity.length - result.pending]);
-						top.push({fixed: result.fixNext, value: expResult.accumulator});
-					}
-					result.fixNext = false;
-					result.pending--;
-					state.current = this.stream.getCurrent();
-					continue;
-			}
-			state.current = this.stream.getNext();
-		}
-
-		return(result);
 	}
 }
 
@@ -1294,6 +1344,66 @@ class Transformer
 		} while(list.length);
 	}
 
+	#extractIsolated(documentElement, base, list)
+	{
+		const path = require('path');
+
+		return(list.filter(i => i.hasAttribute("id")).map(i =>
+		{
+			let container = documentElement.cloneNode(true);
+			let cursor = container.firstChild;
+			let target = null;
+			let visited = [];
+			while(cursor)
+			{
+				if(cursor.firstChild && !visited.includes(cursor.firstChild))
+				{
+					cursor = cursor.firstChild;
+					continue;
+				}
+				else
+				{
+					let nextNode = cursor.nextSibling ?? cursor.parentNode;
+					if(cursor.tagName && cursor.hasAttribute("id"))
+					{
+						if(cursor.getAttribute("id") !== i.getAttribute("id") || target !== null)
+						{
+							let parent = cursor.parentNode;
+							if(cursor.previousSibling && !cursor.previousSibling.tagName)
+								parent.removeChild(cursor.previousSibling);
+							parent.removeChild(cursor);
+						}
+						else
+						{
+							if(target === null)
+								target = cursor;
+							visited.push(cursor);
+						}
+					}
+					else
+						visited.push(cursor);
+					cursor = nextNode;
+				}
+			}
+			const chain = [];
+			while(target && !target.hasAttribute("dir"))
+			{
+				chain.push(target);
+				target = target.parentNode;
+			}
+			if(target.attributes.length === 1 && target.parentNode)
+			{
+				const parent = target.parentNode;
+				parent.insertBefore(chain[chain.length - 1], target);
+				parent.removeChild(target);
+			}
+			else
+				target.removeAttribute("dir");
+
+			return([base + (target ? target.getAttribute("dir") + path.sep : "") + i.getAttribute("id") + ".svg", container]);
+		}));
+	}
+
 	transform(configuration)
 	{
 		let context =
@@ -1324,9 +1434,9 @@ class Transformer
 		while(list.length)
 		{
 			let item = list.shift();
-			let parser = new PathParser$1(new TokenStream(item.getAttribute("d")));
+			let parser = new PathParser(new TokenStream(item.getAttribute("d")));
 			let pathResult = parser.parse(context);
-			item.setAttribute("d", PathParser$1.resultToString(pathResult, context.optimisation.path.precision));
+			item.setAttribute("d", PathParser.resultToString(pathResult, context.optimisation.path.precision));
 		}
 		list = Array.from(this.document.getElementsByTagName("svg"));
 		context.depth = 0;
@@ -1335,9 +1445,9 @@ class Transformer
 			let item = list.shift();
 			if(item.hasAttribute("viewBox"))
 			{
-				let parser = new PathParser$1(new TokenStream(item.getAttribute("viewBox")));
+				let parser = new PathParser(new TokenStream(item.getAttribute("viewBox")));
 				let viewBoxResult = parser.parseList(context, Value.getEmptyResult(), 4);
-				item.setAttribute("viewBox", PathParser$1.resultToString(viewBoxResult, context.optimisation.path.precision));
+				item.setAttribute("viewBox", PathParser.resultToString(viewBoxResult, context.optimisation.path.precision));
 			}
 		}
 		let stack = [];
@@ -1357,8 +1467,16 @@ class Transformer
 			if(context.optimisation.xml.stripComments && target.nodeType === Node.COMMENT_NODE)
 				target.parentNode.removeChild(target);
 		}
+		if(configuration.extract)
+		{
+			const path = require('path');
+			let base = configuration.destination + path.sep;
+			list = this.#extractIsolated(this.document.documentElement, base, Array.from(this.document.getElementsByTagName("*")));
+		}
+		else
+			list = [[configuration.destination, this.document.documentElement]];
 
-		return((new (typeof(XMLSerializer) === "undefined" ? require("xmldom").XMLSerializer : XMLSerializer)()).serializeToString(this.document.documentElement));
+		return(list.map(([i, j]) => [i, (new (typeof(XMLSerializer) === "undefined" ? require("xmldom").XMLSerializer : XMLSerializer)()).serializeToString(j)]));
 	}
 }
 
@@ -1416,7 +1534,7 @@ export function transform(text, configuration, require)
 		precision: 3
 	};
 
-	while(reading && valid && parameter[0].startsWith("--"))
+	while(reading && valid && parameter[0] && parameter[0].startsWith("--"))
 		switch(parameter[0])
 		{
 			case "--precision":
@@ -1447,6 +1565,10 @@ export function transform(text, configuration, require)
 				configuration.combinePathCommands = true;
 				parameter.shift();
 				break;
+			case "--extract":
+				configuration.extract = true;
+				parameter.shift();
+				break;
 			case "--":
 				parameter.shift();
 			default:
@@ -1457,7 +1579,7 @@ export function transform(text, configuration, require)
 	{
 		console.log(
 `
-Usage: npm start -- [options] transform <source> <destination> [units...]
+Usage: npm start -- [options] <source> <destination> [units...]
 
 source       An unprocessed SVG file containing Pather commands
 destination  Desired filename of the processed output
@@ -1466,6 +1588,7 @@ options      One or more of the following switches:
   --stripWhitespace <path|xml|all>  Strip whitespace from within path data, between XML tags or both (all)
   --stripComments                   Strip XML comments from the output document
   --combinePathCommands             Combine repeated commands in path data, e.g. h 30 h 30 becomes h 60
+  --extract                         Extract all elements with an ID to individual files (destination is a directory)
 units        Variable values to be passed to the Pather environment
              Name/value pairs separated by "=", e.g. myUnit=3 myOtherUnit=4.2
 `
@@ -1474,7 +1597,7 @@ units        Variable values to be passed to the Pather environment
 	else
 	{
 		let source = parameter.shift();
-		let destination = parameter.shift();
+		configuration.destination = parameter.shift();
 		configuration.unit = {};
 		reading = true;
 		while(reading && parameter.length) {
@@ -1508,7 +1631,15 @@ units        Variable values to be passed to the Pather environment
 			configuration.base = path.dirname(source) + path.sep;
 			const data = fs.readFileSync(source, {encoding: "utf-8", flag: "r"});
 			let t = new Transformer(data);
-			fs.writeFileSync(destination, t.transform(configuration), {encoding: "utf-8"});
+			let output = t.transform(configuration);
+			output.forEach(([i, j]) =>
+			{
+				if(!fs.existsSync(path.dirname(i)))
+					fs.mkdirSync(path.dirname(i));
+				fs.writeFileSync(i, j, {encoding: "utf-8"});
+
+				return;
+			});
 		}
 	}
 

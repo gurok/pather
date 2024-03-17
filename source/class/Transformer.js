@@ -127,6 +127,66 @@ export default class Transformer
 		} while(list.length);
 	}
 
+	#extractIsolated(documentElement, base, list)
+	{
+		const path = require('path');
+
+		return(list.filter(i => i.hasAttribute("id")).map(i =>
+		{
+			let container = documentElement.cloneNode(true);
+			let cursor = container.firstChild;
+			let target = null;
+			let visited = [];
+			while(cursor)
+			{
+				if(cursor.firstChild && !visited.includes(cursor.firstChild))
+				{
+					cursor = cursor.firstChild;
+					continue;
+				}
+				else
+				{
+					let nextNode = cursor.nextSibling ?? cursor.parentNode;
+					if(cursor.tagName && cursor.hasAttribute("id"))
+					{
+						if(cursor.getAttribute("id") !== i.getAttribute("id") || target !== null)
+						{
+							let parent = cursor.parentNode;
+							if(cursor.previousSibling && !cursor.previousSibling.tagName)
+								parent.removeChild(cursor.previousSibling);
+							parent.removeChild(cursor);
+						}
+						else
+						{
+							if(target === null)
+								target = cursor;
+							visited.push(cursor);
+						}
+					}
+					else
+						visited.push(cursor);
+					cursor = nextNode;
+				}
+			}
+			const chain = [];
+			while(target && !target.hasAttribute("dir"))
+			{
+				chain.push(target);
+				target = target.parentNode;
+			}
+			if(target.attributes.length === 1 && target.parentNode)
+			{
+				const parent = target.parentNode;
+				parent.insertBefore(chain[chain.length - 1], target);
+				parent.removeChild(target);
+			}
+			else
+				target.removeAttribute("dir");
+
+			return([base + (target ? target.getAttribute("dir") + path.sep : "") + i.getAttribute("id") + ".svg", container]);
+		}));
+	}
+
 	transform(configuration)
 	{
 		let context =
@@ -190,7 +250,15 @@ export default class Transformer
 			if(context.optimisation.xml.stripComments && target.nodeType === Node.COMMENT_NODE)
 				target.parentNode.removeChild(target);
 		}
+		if(configuration.extract)
+		{
+			const path = require('path');
+			let base = configuration.destination + path.sep;
+			list = this.#extractIsolated(this.document.documentElement, base, Array.from(this.document.getElementsByTagName("*")));
+		}
+		else
+			list = [[configuration.destination, this.document.documentElement]];
 
-		return((new (typeof(XMLSerializer) === "undefined" ? require("xmldom").XMLSerializer : XMLSerializer)()).serializeToString(this.document.documentElement));
+		return(list.map(([i, j]) => [i, (new (typeof(XMLSerializer) === "undefined" ? require("xmldom").XMLSerializer : XMLSerializer)()).serializeToString(j)]));
 	}
 };
