@@ -737,7 +737,8 @@ class PathParser
 						top = [top[0]];
 					}
 					if(!result.pending)
-						throw(new SyntaxError(`Too many parameters supplied to command "${top[0]}"`));					if(top[0].toLowerCase() === "a" && (result.pending === 4 || result.pending === 3) && state.current.type === Token.TYPE_NUMBER && state.current.name.length > 1 && ["0", "1"].indexOf(state.current.name.substr(0, 1)) !== -1)
+						throw(new SyntaxError(`Too many parameters supplied to command "${top[0]}"`));
+					if(top[0].toLowerCase() === "a" && (result.pending === 4 || result.pending === 3) && state.current.type === Token.TYPE_NUMBER && state.current.name.length > 1 && ["0", "1"].indexOf(state.current.name.substr(0, 1)) !== -1)
 					{
 						top.push({fixed: result.fixNext, value: new BigDecimal(state.current.name.substr(0, 1))});
 						state.current.name = state.current.name.substr(1);
@@ -745,8 +746,18 @@ class PathParser
 					}
 					else
 					{
-						let expResult = new ExpressionParser(this.stream).parse(context, 0, argumentList, false, {x: result.x, y: result.y}, result.arity[result.arity.length - result.pending]);
-						top.push({fixed: result.fixNext, value: expResult.accumulator});
+						if(state.current.type === Token.TYPE_NUMBER)
+						{
+							next = this.stream.peekNext();
+							invoked = next.type === Token.TYPE_IDENTIFIER && context.segment[next.name];
+						}
+						else
+							invoked = context.segment[state.current.name];
+						if(!invoked)
+						{
+							let expResult = new ExpressionParser(this.stream).parse(context, 0, argumentList, false, {x: result.x, y: result.y}, result.arity[result.arity.length - result.pending]);
+							top.push({fixed: result.fixNext, value: expResult.accumulator});
+						}
 					}
 					result.fixNext = false;
 					result.pending--;
@@ -1345,7 +1356,15 @@ class Transformer
 					}
 				}
 				else
-					item.parentNode.insertBefore(target, item);
+				{
+					let child = target;
+					while(child)
+					{
+						let add = child;
+						child = child.nextSibling;
+						item.parentNode.insertBefore(add, item);
+					}
+				}
 				item.parentNode.removeChild(item);
 			});
 		} while(list.length);

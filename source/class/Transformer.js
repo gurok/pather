@@ -130,7 +130,15 @@ export default class Transformer
 					}
 				}
 				else
-					item.parentNode.insertBefore(target, item);
+				{
+					let child = target;
+					while(child)
+					{
+						let add = child;
+						child = child.nextSibling;
+						item.parentNode.insertBefore(add, item);
+					}
+				}
 				item.parentNode.removeChild(item);
 			});
 		} while(list.length);
