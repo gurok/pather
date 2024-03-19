@@ -160,8 +160,8 @@ export default class Distortion
 			case "l":
 			case "h":
 			case "v":
-				let topX = command === "v" ? {value: new BigDecimal(origin.x), fixed: true} : top[1];
-				let topY = command === "h" ? {value: new BigDecimal(origin.y), fixed: true} : (command === "v" ? top[1] : top[2]);
+				let topX = command === "v" ? {value: new BigDecimal(origin.x), fixed: top[1].fixed} : top[1];
+				let topY = command === "h" ? {value: new BigDecimal(origin.y), fixed: top[1].fixed} : (command === "v" ? top[1] : top[2]);
 				point =
 				{
 					x: topX.value,

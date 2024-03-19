@@ -515,8 +515,8 @@ class Distortion
 			case "l":
 			case "h":
 			case "v":
-				let topX = command === "v" ? {value: new BigDecimal(origin.x), fixed: true} : top[1];
-				let topY = command === "h" ? {value: new BigDecimal(origin.y), fixed: true} : (command === "v" ? top[1] : top[2]);
+				let topX = command === "v" ? {value: new BigDecimal(origin.x), fixed: top[1].fixed} : top[1];
+				let topY = command === "h" ? {value: new BigDecimal(origin.y), fixed: top[1].fixed} : (command === "v" ? top[1] : top[2]);
 				point =
 				{
 					x: topX.value,
@@ -1201,7 +1201,7 @@ class ExpressionParser
 						}
 						break;
 					case Token.TYPE_WHITESPACE:
-						if(this.stream.peekNext().type === Token.TYPE_OPERATOR_ROTATE)
+						if([Token.TYPE_OPERATOR_ROTATE, Token.TYPE_OPERATOR_SKEW_HORIZONTAL, Token.TYPE_OPERATOR_SKEW_VERTICAL].includes(this.stream.peekNext().type))
 							break;
 					default:
 						state.reading = false;

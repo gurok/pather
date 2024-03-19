@@ -437,7 +437,7 @@ export default class ExpressionParser
 						}
 						break;
 					case Token.TYPE_WHITESPACE:
-						if(this.stream.peekNext().type === Token.TYPE_OPERATOR_ROTATE)
+						if([Token.TYPE_OPERATOR_ROTATE, Token.TYPE_OPERATOR_SKEW_HORIZONTAL, Token.TYPE_OPERATOR_SKEW_VERTICAL].includes(this.stream.peekNext().type))
 							break;
 					default:
 						state.reading = false;
