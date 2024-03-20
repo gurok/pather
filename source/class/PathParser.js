@@ -19,7 +19,7 @@ export default class PathParser
 		return(result.sequence.map(i => "" + i[0].toString() + (i.length > 1 ? " " + i.slice(1).join(",") : "")).join(" "));
 	}
 
-	parseList(context, result = Value.getEmptyResult(), limit)
+	parseList(context, result = Value.getEmptyResult(), limit = -1)
 	{
 		let state;
 		let top;
@@ -32,7 +32,7 @@ export default class PathParser
 		};
 		top = [];
 
-		while(state.reading && state.current && state.index < limit)
+		while(state.reading && state.current && (state.index < limit || limit === -1))
 		{
 			switch(state.current.type)
 			{

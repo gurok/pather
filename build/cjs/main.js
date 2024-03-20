@@ -636,7 +636,7 @@ class PathParser
 		return(result.sequence.map(i => "" + i[0].toString() + (i.length > 1 ? " " + i.slice(1).join(",") : "")).join(" "));
 	}
 
-	parseList(context, result = Value.getEmptyResult(), limit)
+	parseList(context, result = Value.getEmptyResult(), limit = -1)
 	{
 		let state;
 
@@ -647,7 +647,7 @@ class PathParser
 			index: 0
 		};
 
-		while(state.reading && state.current && state.index < limit)
+		while(state.reading && state.current && (state.index < limit || limit === -1))
 		{
 			switch(state.current.type)
 			{
@@ -1464,18 +1464,55 @@ class Transformer
 			let pathResult = parser.parse(context);
 			item.setAttribute("d", PathParser.resultToString(pathResult, context.optimisation.path.precision));
 		}
-		list = Array.from(this.document.getElementsByTagName("svg"));
-		context.depth = 0;
-		while(list.length)
+		const scan =
+		[
+			{tagName: "svg", attribute: [{name: "viewBox", limit: 4}, "width", "height"]},
+			{tagName: "rect", attribute: ["x", "y", "width", "height", "rx", "ry"]},
+			{tagName: "circle", attribute: ["r", "cx", "cy"]},
+			{tagName: "ellipse", attribute: ["rx", "ry", "cx", "cy"]},
+			{tagName: "line", attribute: ["x1", "y1", "x2", "y2"]},
+			{tagName: "polygon", attribute: [{name: "points", limit: -1}]},
+			{tagName: "polyline", attribute: [{name: "points", limit: -1}]},
+			{tagName: "line", attribute: ["x1", "y1", "x2", "y2"]},
+			{tagName: "textPath", attribute: ["startOffset"]},
+			{tagName: "image", attribute: ["x", "y", "width", "height"]},
+			{tagName: "marker", attribute: ["markerWidth", "markerHeight", "refX", "refY"]},
+		];
+		scan.forEach(target =>
 		{
-			let item = list.shift();
-			if(item.hasAttribute("viewBox"))
+			list = Array.from(this.document.getElementsByTagName(target.tagName));
+			context.depth = 0;
+			while(list.length)
 			{
-				let parser = new PathParser(new TokenStream(item.getAttribute("viewBox")));
-				let viewBoxResult = parser.parseList(context, Value.getEmptyResult(), 4);
-				item.setAttribute("viewBox", PathParser.resultToString(viewBoxResult, context.optimisation.path.precision));
+				let item = list.shift();
+				target.attribute.forEach(attribute =>
+				{
+					let attributeName;
+					let attributeLimit;
+
+					if(typeof(attribute) === "string")
+					{
+						attributeName = attribute;
+						attributeLimit = 1;
+					}
+					else
+					{
+						attributeName = attribute.name;
+						attributeLimit = attribute.limit;
+					}
+					if(item.hasAttribute(attributeName))
+					{
+						let parser = new PathParser(new TokenStream(item.getAttribute(attributeName)));
+						let viewBoxResult = parser.parseList(context, Value.getEmptyResult(), attributeLimit);
+						item.setAttribute(attributeName, PathParser.resultToString(viewBoxResult, context.optimisation.path.precision));
+					}
+
+					return;
+				});
 			}
-		}
+
+			return;
+		});
 		let stack = [];
 		let cursor = this.document.documentElement.firstChild;
 		let Node = {COMMENT_NODE: 8, TEXT_NODE: 3};
