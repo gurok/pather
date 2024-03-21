@@ -191,14 +191,15 @@ export default class Transformer
 				chain.push(target);
 				target = target.parentNode;
 			}
-			if(target.attributes.length === 1 && target.parentNode)
-			{
-				const parent = target.parentNode;
-				parent.insertBefore(chain[chain.length - 1], target);
-				parent.removeChild(target);
-			}
-			else
-				target.removeAttribute("dir");
+			if(target)
+				if(target.attributes.length === 1 && target.parentNode)
+				{
+					const parent = target.parentNode;
+					parent.insertBefore(chain[chain.length - 1], target);
+					parent.removeChild(target);
+				}
+				else
+					target.removeAttribute("dir");
 
 			return([base + (target ? target.getAttribute("dir") + path.sep : "") + i.getAttribute("id") + ".svg", container]);
 		}));
