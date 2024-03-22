@@ -158,7 +158,7 @@ units        Variable values to be passed to the Pather environment
 			output.forEach(([i, j]) =>
 			{
 				if(!fs.existsSync(path.dirname(i)))
-					fs.mkdirSync(path.dirname(i));
+					fs.mkdirSync(path.dirname(i), { recursive: true });
 				fs.writeFileSync(i, j, {encoding: "utf-8"})
 
 				return;
