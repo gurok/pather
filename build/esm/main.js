@@ -1409,7 +1409,10 @@ class Transformer
 						else
 						{
 							if(target === null)
+							{
 								target = cursor;
+								target.removeAttribute("id");
+							}
 							visited.push(cursor);
 						}
 					}
