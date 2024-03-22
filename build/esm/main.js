@@ -28,6 +28,11 @@ class Token
         this.value = value;
         this.position = position;
     }
+
+    static nameOf(type)
+    {
+        return(Object.entries(Token).filter(([key, value]) => value === type)[0][0]);
+    }
 }
 
 class BigDecimal
@@ -785,10 +790,10 @@ class ExpressionParser
 
     static #formatOperation(operation)
     {
-		return(operation.value + " " + ["", "=", "+", "-", "*", "/"][operation.operation]);
+		return(operation.value.toString() + " " + ["", "=", "+", "-", "*", "/"][operation.operation]);
 	}
 
-    static #unwind(result, limit)
+    #unwind(result, limit)
     {
 		var start;
 		var index;
@@ -896,7 +901,7 @@ class ExpressionParser
 						throw(new SyntaxError(`Unexpected token "${state.current.name}" at column ${state.current.position}`));
 					if(this.debug)
 						console.log("-", state.current);
-					ExpressionParser.#unwind(result, ExpressionParser.#OPERATION_SUBTRACT);
+					this.#unwind(result, ExpressionParser.#OPERATION_SUBTRACT);
 					result.stack.push({operation: ExpressionParser.#OPERATION_SUBTRACT, value: result.accumulator});
 					result.data = Token.TYPE_OPERATOR_SUBTRACT;
 					break;
@@ -905,7 +910,7 @@ class ExpressionParser
 						throw(new SyntaxError(`Unexpected token "${state.current.name}" at column ${state.current.position}`));
 					if(this.debug)
 						console.log("+", state.current);
-					ExpressionParser.#unwind(result, ExpressionParser.#OPERATION_SUBTRACT);
+					this.#unwind(result, ExpressionParser.#OPERATION_SUBTRACT);
 					result.stack.push({operation: ExpressionParser.#OPERATION_ADD, value: result.accumulator});
 					result.data = Token.TYPE_OPERATOR_ADD;
 					break;
@@ -978,7 +983,8 @@ class ExpressionParser
 							throw(new SyntaxError(`Mismatched bracket at column ${state.current.position}`));
 						if(result.data !== Token.TYPE_NUMBER)
 							throw(new SyntaxError(`Unexpected bracket at column ${state.current.position}`));
-						ExpressionParser.#unwind(result, ExpressionParser.#OPERATION_EVALUATE);
+						this.#unwind(result, ExpressionParser.#OPERATION_SUBTRACT);
+						this.#unwind(result, ExpressionParser.#OPERATION_EVALUATE);
 						result.stack.pop();
 						result.data = Token.TYPE_NUMBER;
 						if(insideArgumentList)
@@ -1034,8 +1040,8 @@ class ExpressionParser
 			}
 			state.current = this.stream.getNext();
 		}
-		ExpressionParser.#unwind(result, ExpressionParser.#OPERATION_SUBTRACT);
-		ExpressionParser.#unwind(result, 0);
+		this.#unwind(result, ExpressionParser.#OPERATION_SUBTRACT);
+		this.#unwind(result, 0);
 
 		return(result);
 	}
@@ -1388,7 +1394,10 @@ class Transformer
 				else
 				{
 					let nextNode = cursor.nextSibling ?? cursor.parentNode;
-					if(cursor.tagName && cursor.hasAttribute("id"))
+					let ancestor = cursor;
+					while(ancestor && ancestor.tagName !== "defs")
+						ancestor = ancestor.parentNode;
+					if(!ancestor && cursor.tagName && cursor.hasAttribute("id"))
 					{
 						if(cursor.getAttribute("id") !== i.getAttribute("id") || target !== null)
 						{
@@ -1415,14 +1424,15 @@ class Transformer
 				chain.push(target);
 				target = target.parentNode;
 			}
-			if(target.attributes.length === 1 && target.parentNode)
-			{
-				const parent = target.parentNode;
-				parent.insertBefore(chain[chain.length - 1], target);
-				parent.removeChild(target);
-			}
-			else
-				target.removeAttribute("dir");
+			if(target)
+				if(target.attributes.length === 1 && target.parentNode)
+				{
+					const parent = target.parentNode;
+					parent.insertBefore(chain[chain.length - 1], target);
+					parent.removeChild(target);
+				}
+				else
+					target.removeAttribute("dir");
 
 			return([base + (target ? target.getAttribute("dir") + path.sep : "") + i.getAttribute("id") + ".svg", container]);
 		}));
@@ -1469,10 +1479,13 @@ class Transformer
 			{tagName: "circle", attribute: ["r", "cx", "cy"]},
 			{tagName: "ellipse", attribute: ["rx", "ry", "cx", "cy"]},
 			{tagName: "line", attribute: ["x1", "y1", "x2", "y2"]},
+			{tagName: "image", attribute: ["x", "y", "width", "height"]},
+			{tagName: "pattern", attribute: ["width", "height"]},
 			{tagName: "polygon", attribute: [{name: "points", limit: -1}]},
 			{tagName: "polyline", attribute: [{name: "points", limit: -1}]},
 			{tagName: "line", attribute: ["x1", "y1", "x2", "y2"]},
 			{tagName: "textPath", attribute: ["startOffset"]},
+			{tagName: "path", attribute: ["stroke-width"]},
 			{tagName: "image", attribute: ["x", "y", "width", "height"]},
 			{tagName: "marker", attribute: ["markerWidth", "markerHeight", "refX", "refY"]},
 		];

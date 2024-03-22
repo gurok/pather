@@ -1,0 +1,8 @@
+
+> pather@1.0.0 build
+> rollup -c
+
+
+> pather@1.0.0 start
+> node build/cjs/main.js test\unit-test.svg test\unit-test-out.svg
+

@@ -21,10 +21,10 @@ export default class ExpressionParser
 
     static #formatOperation(operation)
     {
-		return(operation.value + " " + ["", "=", "+", "-", "*", "/"][operation.operation]);
+		return(operation.value.toString() + " " + ["", "=", "+", "-", "*", "/"][operation.operation]);
 	}
 
-    static #unwind(result, limit)
+    #unwind(result, limit)
     {
 		var start;
 		var index;
@@ -132,7 +132,7 @@ export default class ExpressionParser
 						throw(new SyntaxError(`Unexpected token "${state.current.name}" at column ${state.current.position}`));
 					if(this.debug)
 						console.log("-", state.current);
-					ExpressionParser.#unwind(result, ExpressionParser.#OPERATION_SUBTRACT);
+					this.#unwind(result, ExpressionParser.#OPERATION_SUBTRACT);
 					result.stack.push({operation: ExpressionParser.#OPERATION_SUBTRACT, value: result.accumulator});
 					result.data = Token.TYPE_OPERATOR_SUBTRACT;
 					break;
@@ -141,7 +141,7 @@ export default class ExpressionParser
 						throw(new SyntaxError(`Unexpected token "${state.current.name}" at column ${state.current.position}`));
 					if(this.debug)
 						console.log("+", state.current);
-					ExpressionParser.#unwind(result, ExpressionParser.#OPERATION_SUBTRACT);
+					this.#unwind(result, ExpressionParser.#OPERATION_SUBTRACT);
 					result.stack.push({operation: ExpressionParser.#OPERATION_ADD, value: result.accumulator});
 					result.data = Token.TYPE_OPERATOR_ADD;
 					break;
@@ -214,7 +214,8 @@ export default class ExpressionParser
 							throw(new SyntaxError(`Mismatched bracket at column ${state.current.position}`));
 						if(result.data !== Token.TYPE_NUMBER)
 							throw(new SyntaxError(`Unexpected bracket at column ${state.current.position}`));
-						ExpressionParser.#unwind(result, ExpressionParser.#OPERATION_EVALUATE);
+						this.#unwind(result, ExpressionParser.#OPERATION_SUBTRACT);
+						this.#unwind(result, ExpressionParser.#OPERATION_EVALUATE);
 						result.stack.pop();
 						result.data = Token.TYPE_NUMBER;
 						if(insideArgumentList)
@@ -270,8 +271,8 @@ export default class ExpressionParser
 			}
 			state.current = this.stream.getNext();
 		}
-		ExpressionParser.#unwind(result, ExpressionParser.#OPERATION_SUBTRACT);
-		ExpressionParser.#unwind(result, 0);
+		this.#unwind(result, ExpressionParser.#OPERATION_SUBTRACT);
+		this.#unwind(result, 0);
 
 		return(result);
 	}

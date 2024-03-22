@@ -26,4 +26,9 @@ export default class Token
         this.value = value;
         this.position = position;
     }
+
+    static nameOf(type)
+    {
+        return(Object.entries(Token).filter(([key, value]) => value === type)[0][0]);
+    }
 };

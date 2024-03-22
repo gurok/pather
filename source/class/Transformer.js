@@ -164,7 +164,10 @@ export default class Transformer
 				else
 				{
 					let nextNode = cursor.nextSibling ?? cursor.parentNode;
-					if(cursor.tagName && cursor.hasAttribute("id"))
+					let ancestor = cursor;
+					while(ancestor && ancestor.tagName !== "defs")
+						ancestor = ancestor.parentNode;
+					if(!ancestor && cursor.tagName && cursor.hasAttribute("id"))
 					{
 						if(cursor.getAttribute("id") !== i.getAttribute("id") || target !== null)
 						{
@@ -246,10 +249,13 @@ export default class Transformer
 			{tagName: "circle", attribute: ["r", "cx", "cy"]},
 			{tagName: "ellipse", attribute: ["rx", "ry", "cx", "cy"]},
 			{tagName: "line", attribute: ["x1", "y1", "x2", "y2"]},
+			{tagName: "image", attribute: ["x", "y", "width", "height"]},
+			{tagName: "pattern", attribute: ["width", "height"]},
 			{tagName: "polygon", attribute: [{name: "points", limit: -1}]},
 			{tagName: "polyline", attribute: [{name: "points", limit: -1}]},
 			{tagName: "line", attribute: ["x1", "y1", "x2", "y2"]},
 			{tagName: "textPath", attribute: ["startOffset"]},
+			{tagName: "path", attribute: ["stroke-width"]},
 			{tagName: "image", attribute: ["x", "y", "width", "height"]},
 			{tagName: "marker", attribute: ["markerWidth", "markerHeight", "refX", "refY"]},
 		];
