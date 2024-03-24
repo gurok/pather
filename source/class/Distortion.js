@@ -32,7 +32,25 @@ export default class Distortion
 			x: x0.add(x1.multiplyBy(cosine)).subtract(y1.multiplyBy(sine)),
 			y: y0.add(y1.multiplyBy(cosine)).add(x1.multiplyBy(sine))
 		});
-	};
+	}
+	
+	static #skewX(x0, y0, x1, y1, distortionValue)
+	{
+		return(
+		{
+			x: x0.add(x1.subtract(x0).subtract(y1.multiplyBy(Math.tan((distortionValue.toNumber() % 360) * Math.PI / 180)))),
+			y: y1
+		});
+	}
+
+	static #skewY(x0, y0, x1, y1, distortionValue)
+	{
+		return(
+		{
+			x: x1,
+			y: y0.add(y1.subtract(y0).subtract(x1.multiplyBy(Math.tan((distortionValue.toNumber() % 360) * Math.PI / 180))))
+		});
+	}
 
 	static #fixPoint(point, relative, topX, topY, distortionType, result)
 	{
@@ -72,6 +90,12 @@ export default class Distortion
 			throw(new SyntaxError(`Too few arguments for command ${top[0]}`));
 		if(result.fixNext)
 			throw(new SyntaxError(`Dangling fix operator after command ${top[0]}`));
+		const distortionFunction =
+		({
+			[Distortion.OPERATION_ROTATE]: this.#rotate,
+			[Distortion.OPERATION_SKEW_HORIZONTAL]: this.#skewX,
+			[Distortion.OPERATION_SKEW_VERTICAL]: this.#skewY
+		})[distortionType] || this.#rotate;
 		// TODO: Eventually, all values will need to be rounded just beyond this point
 		switch(command)
 		{
@@ -82,7 +106,7 @@ export default class Distortion
 					y: top[7].value
 				};
 				if(distortionType !== Distortion.OPERATION_NONE)
-					point = Distortion.#rotate(origin.x, origin.y, point.x, point.y, distortionValue);
+					point = distortionFunction(origin.x, origin.y, point.x, point.y, distortionValue);
 				Distortion.#fixPoint(point, relative, top[6], top[7], distortionType, result);
 				top =
 				[
@@ -114,9 +138,9 @@ export default class Distortion
 				};
 				if(distortionType !== Distortion.OPERATION_NONE)
 				{
-					point1 = Distortion.#rotate(origin.x, origin.y, point1.x, point1.y, distortionValue);
-					point2 = Distortion.#rotate(origin.x, origin.y, point2.x, point2.y, distortionValue);
-					point = Distortion.#rotate(origin.x, origin.y, point.x, point.y, distortionValue);
+					point1 = distortionFunction(origin.x, origin.y, point1.x, point1.y, distortionValue);
+					point2 = distortionFunction(origin.x, origin.y, point2.x, point2.y, distortionValue);
+					point = distortionFunction(origin.x, origin.y, point.x, point.y, distortionValue);
 				}
 				Distortion.#fixPoint(point, relative, top[5], top[6], distortionType, result);
 				top =
@@ -144,8 +168,8 @@ export default class Distortion
 				};
 				if(distortionType !== Distortion.OPERATION_NONE)
 				{
-					point1 = Distortion.#rotate(origin.x, origin.y, point1.x, point1.y, distortionValue);
-					point = Distortion.#rotate(origin.x, origin.y, point.x, point.y, distortionValue);
+					point1 = distortionFunction(origin.x, origin.y, point1.x, point1.y, distortionValue);
+					point = distortionFunction(origin.x, origin.y, point.x, point.y, distortionValue);
 				}
 				Distortion.#fixPoint(point, relative, top[3], top[4], distortionType, result);
 				top =
@@ -168,7 +192,7 @@ export default class Distortion
 					y: topY.value
 				};
 				if(distortionType !== Distortion.OPERATION_NONE)
-					point = Distortion.#rotate(origin.x, origin.y, point.x, point.y, distortionValue);
+					point = distortionFunction(origin.x, origin.y, point.x, point.y, distortionValue);
 				lastAngle = Math.atan2(point.y.subtract(origin.y).toNumber(), point.x.subtract(origin.x).toNumber()) * 180 / Math.PI;
 				Distortion.#fixPoint(point, relative, topX, topY, distortionType, result);
 				top = point.x.equals(origin.x)
@@ -217,7 +241,7 @@ export default class Distortion
 					y: top[2].value
 				}
 				if(distortionType !== Distortion.OPERATION_NONE)
-					point = Distortion.#rotate(origin.x, origin.y, point.x, point.y, distortionValue);
+					point = distortionFunction(origin.x, origin.y, point.x, point.y, distortionValue);
 				Distortion.#fixPoint(point, relative, top[1], top[2], distortionType, result);
 				top = [top[0], point.x, point.y];
 				if(context.optimisation.path.combineCommands && command === "m" && result.sequence.length > 0)
