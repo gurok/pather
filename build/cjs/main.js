@@ -364,73 +364,100 @@ class TokenStream
 
 class Distortion
 {
-	static OPERATION_NONE = 0;
 	static OPERATION_ROTATE = 1;
 	static OPERATION_SKEW_HORIZONTAL = 2;
 	static OPERATION_SKEW_VERTICAL = 3;
 
-	static #rotate(x0, y0, x1, y1, distortionValue)
+	constructor(type, value)
 	{
-		var cosine;
-		var sine;
-
-		x1 = x1.subtract(x0);
-		y1 = y1.subtract(y0);
-		distortionValue = (distortionValue.toNumber() % 360) * Math.PI / 180;
-		cosine = Math.cos(distortionValue);
-		sine = Math.sin(distortionValue);
-		if(Math.abs(cosine - sine) < Number.EPSILON * 2)
-			sine = cosine;
-		else
-			if(Math.abs(cosine + sine) < Number.EPSILON * 2)
-				cosine = sine;
-		if(Math.abs(cosine) < Number.EPSILON)
-			cosine = 0;
-		if(Math.abs(sine) < Number.EPSILON)
-			sine = 0;
-	
-		return(
-		{
-			x: x0.add(x1.multiplyBy(cosine)).subtract(y1.multiplyBy(sine)),
-			y: y0.add(y1.multiplyBy(cosine)).add(x1.multiplyBy(sine))
-		});
-	}
-	
-	static #skewX(x0, y0, x1, y1, distortionValue)
-	{
-		return(
-		{
-			x: x0.add(x1.subtract(x0).subtract(y1.multiplyBy(Math.tan((distortionValue.toNumber() % 360) * Math.PI / 180)))),
-			y: y1
-		});
-	}
-
-	static #skewY(x0, y0, x1, y1, distortionValue)
-	{
-		return(
-		{
-			x: x1,
-			y: y0.add(y1.subtract(y0).subtract(x1.multiplyBy(Math.tan((distortionValue.toNumber() % 360) * Math.PI / 180))))
-		});
-	}
-
-	static #fixPoint(point, relative, topX, topY, distortionType, result)
-	{
-		if(distortionType === Distortion.OPERATION_SKEW_VERTICAL)
-			point.x = topX.value;
-		else
-			if(topX.fixed)
-				point.x = relative ? topX.value.subtract(result.x) : topX.value;
-		if(distortionType === Distortion.OPERATION_SKEW_HORIZONTAL)
-			point.y = topY.value;
-		else
-			if(topY.fixed)
-				point.y = relative ? topY.value.subtract(result.y) : topY.value;
+		this.type = type;
+		this.value = value;
 
 		return;
 	}
 
-	static applyDistortion(context, top, result, distortionType, distortionValue)
+	#getName()
+	{
+		return(
+		({
+			[Distortion.OPERATION_ROTATE]: "Rotate",
+			[Distortion.OPERATION_SKEW_HORIZONTAL]: "Vertical skew",
+			[Distortion.OPERATION_SKEW_VERTICAL]: "Horizontal skew",
+		})[this.type] ?? "Unknown");
+	}
+
+	toString()
+	{
+		return(`${this.#getName()}: ${this.value}`);
+	}
+
+	run(x0, y0, x1, y1)
+	{
+		let result;
+		let distortionValue;
+
+		switch(this.type)
+		{
+			case Distortion.OPERATION_ROTATE:
+				let cosine;
+				let sine;
+		
+				x1 = x1.subtract(x0);
+				y1 = y1.subtract(y0);
+				distortionValue = (this.value.toNumber() % 360) * Math.PI / 180;
+				cosine = Math.cos(distortionValue);
+				sine = Math.sin(distortionValue);
+				if(Math.abs(cosine - sine) < Number.EPSILON * 2)
+					sine = cosine;
+				else
+					if(Math.abs(cosine + sine) < Number.EPSILON * 2)
+						cosine = sine;
+				if(Math.abs(cosine) < Number.EPSILON)
+					cosine = 0;
+				if(Math.abs(sine) < Number.EPSILON)
+					sine = 0;
+			
+				result =
+				{
+					x: x0.add(x1.multiplyBy(cosine)).subtract(y1.multiplyBy(sine)),
+					y: y0.add(y1.multiplyBy(cosine)).add(x1.multiplyBy(sine))
+				};
+				break;
+			case Distortion.OPERATION_SKEW_HORIZONTAL:
+				result =
+				{
+					x: x0.add(x1.subtract(x0).subtract(y1.multiplyBy(Math.tan((this.value.toNumber() % 360) * Math.PI / 180)))),
+					y: y1
+				};
+				break;
+			case Distortion.OPERATION_SKEW_VERTICAL:
+				result =
+				{
+					x: x1,
+					y: y0.add(y1.subtract(y0).subtract(x1.multiplyBy(Math.tan((distortionValue.toNumber() % 360) * Math.PI / 180))))
+				};
+				break;
+		}
+
+		return(result);
+	}
+
+	static runStack(x0, y0, x1, y1, distortionStack)
+	{
+		return(distortionStack.reduceRight((carry, item) => item.run(x0, y0, carry.x, carry.y), {x: x1, y: y1}));
+	}
+
+	static #fixPoint(point, relative, topX, topY, result)
+	{
+		if(topX.fixed)
+			point.x = relative ? topX.value.subtract(result.x) : topX.value;
+		if(topY.fixed)
+			point.y = relative ? topY.value.subtract(result.y) : topY.value;
+
+		return;
+	}
+
+	static applyDistortion(context, top, result, distortionStack)
 	{
 		let origin;
 		let point;
@@ -452,12 +479,6 @@ class Distortion
 			throw(new SyntaxError(`Too few arguments for command ${top[0]}`));
 		if(result.fixNext)
 			throw(new SyntaxError(`Dangling fix operator after command ${top[0]}`));
-		const distortionFunction =
-		({
-			[Distortion.OPERATION_ROTATE]: this.#rotate,
-			[Distortion.OPERATION_SKEW_HORIZONTAL]: this.#skewX,
-			[Distortion.OPERATION_SKEW_VERTICAL]: this.#skewY
-		})[distortionType] || this.#rotate;
 		// TODO: Eventually, all values will need to be rounded just beyond this point
 		switch(command)
 		{
@@ -467,9 +488,9 @@ class Distortion
 					x: top[6].value,
 					y: top[7].value
 				};
-				if(distortionType !== Distortion.OPERATION_NONE)
-					point = distortionFunction(origin.x, origin.y, point.x, point.y, distortionValue);
-				Distortion.#fixPoint(point, relative, top[6], top[7], distortionType, result);
+				if(distortionStack.length)
+					point = Distortion.runStack(origin.x, origin.y, point.x, point.y, distortionStack);
+				Distortion.#fixPoint(point, relative, top[6], top[7], result);
 				top =
 				[
 					top[0],
@@ -498,13 +519,13 @@ class Distortion
 					x: top[5].value,
 					y: top[6].value
 				};
-				if(distortionType !== Distortion.OPERATION_NONE)
+				if(distortionStack.length)
 				{
-					point1 = distortionFunction(origin.x, origin.y, point1.x, point1.y, distortionValue);
-					point2 = distortionFunction(origin.x, origin.y, point2.x, point2.y, distortionValue);
-					point = distortionFunction(origin.x, origin.y, point.x, point.y, distortionValue);
+					point1 = Distortion.runStack(origin.x, origin.y, point1.x, point1.y, distortionStack);
+					point2 = Distortion.runStack(origin.x, origin.y, point2.x, point2.y, distortionStack);
+					point = Distortion.runStack(origin.x, origin.y, point.x, point.y, distortionStack);
 				}
-				Distortion.#fixPoint(point, relative, top[5], top[6], distortionType, result);
+				Distortion.#fixPoint(point, relative, top[5], top[6], result);
 				top =
 				[
 					top[0],
@@ -528,12 +549,12 @@ class Distortion
 					x: top[3].value,
 					y: top[4].value
 				};
-				if(distortionType !== Distortion.OPERATION_NONE)
+				if(distortionStack.length)
 				{
-					point1 = distortionFunction(origin.x, origin.y, point1.x, point1.y, distortionValue);
-					point = distortionFunction(origin.x, origin.y, point.x, point.y, distortionValue);
+					point1 = Distortion.runStack(origin.x, origin.y, point1.x, point1.y, distortionStack);
+					point = Distortion.runStack(origin.x, origin.y, point.x, point.y, distortionStack);
 				}
-				Distortion.#fixPoint(point, relative, top[3], top[4], distortionType, result);
+				Distortion.#fixPoint(point, relative, top[3], top[4], result);
 				top =
 				[
 					top[0],
@@ -553,10 +574,10 @@ class Distortion
 					x: topX.value,
 					y: topY.value
 				};
-				if(distortionType !== Distortion.OPERATION_NONE)
-					point = distortionFunction(origin.x, origin.y, point.x, point.y, distortionValue);
+				if(distortionStack.length)
+					point = Distortion.runStack(origin.x, origin.y, point.x, point.y, distortionStack);
 				lastAngle = Math.atan2(point.y.subtract(origin.y).toNumber(), point.x.subtract(origin.x).toNumber()) * 180 / Math.PI;
-				Distortion.#fixPoint(point, relative, topX, topY, distortionType, result);
+				Distortion.#fixPoint(point, relative, topX, topY, result);
 				top = point.x.equals(origin.x)
 					?
 					(
@@ -602,9 +623,9 @@ class Distortion
 					x: top[1].value,
 					y: top[2].value
 				};
-				if(distortionType !== Distortion.OPERATION_NONE)
-					point = distortionFunction(origin.x, origin.y, point.x, point.y, distortionValue);
-				Distortion.#fixPoint(point, relative, top[1], top[2], distortionType, result);
+				if(distortionStack.length)
+					point = Distortion.runStack(origin.x, origin.y, point.x, point.y, distortionStack);
+				Distortion.#fixPoint(point, relative, top[1], top[2], result);
 				top = [top[0], point.x, point.y];
 				if(context.optimisation.path.combineCommands && command === "m" && result.sequence.length > 0)
 				{
@@ -699,7 +720,7 @@ class PathParser
 		return(result);
 	}
 
-	parse(context, result = Value.getEmptyResult(), distortionType = Distortion.OPERATION_NONE, distortionValue = new BigDecimal(0), index = 1, argumentList)
+	parse(context, result = Value.getEmptyResult(), distortionStack = [], index = 1, argumentList)
 	{
 		let state;
 		let top;
@@ -720,7 +741,7 @@ class PathParser
 					if(result.arity === null && state.current.name.toLowerCase() !== "m")
 						throw(new SyntaxError("Paths must begin with a Move To command"));
 					if(top)
-						Distortion.applyDistortion(context, top, result, distortionType, distortionValue);
+						Distortion.applyDistortion(context, top, result, distortionStack);
 					result.arity = state.current.value;
 					result.pending = result.arity.length;
 					top = [state.current.name];
@@ -733,7 +754,7 @@ class PathParser
 					break;
 				case Token.TYPE_END:
 					if(top)
-						Distortion.applyDistortion(context, top, result, distortionType, distortionValue);
+						Distortion.applyDistortion(context, top, result, distortionStack);
 					state.reading = false;
 					break;
 				case Token.TYPE_IDENTIFIER:
@@ -749,10 +770,10 @@ class PathParser
 					{
 						if(top)
 						{
-							Distortion.applyDistortion(context, top, result, distortionType, distortionValue);
+							Distortion.applyDistortion(context, top, result, distortionStack);
 							top = null;
 						}
-						new ExpressionParser(this.stream).parseInvocation(context, result, argumentList);
+						new ExpressionParser(this.stream).parseInvocation(context, result, argumentList, distortionStack.concat());
 						state.current = this.stream.getCurrent();
 						continue;
 					}
@@ -761,7 +782,7 @@ class PathParser
 						throw(new Error(`Expected command, but found "${state.current.name}"`));
 					if(!result.pending)
 					{
-						Distortion.applyDistortion(context, top, result, distortionType, distortionValue);
+						Distortion.applyDistortion(context, top, result, distortionStack);
 						result.pending = result.arity.length;
 						top = [top[0]];
 					}
@@ -962,7 +983,7 @@ class ExpressionParser
 					expResult.x = position.x;
 					expResult.y = position.y;
 					expResult.arity = [];
-					new ExpressionParser(this.stream).parseInvocation(context, expResult, argumentList);
+					new ExpressionParser(this.stream).parseInvocation(context, expResult, argumentList, []);
 					result.data = Token.TYPE_NUMBER;
 					switch(type)
 					{
@@ -1072,7 +1093,7 @@ class ExpressionParser
 		return(result);
 	}
 
-	parseInvocation(context, result, argumentList)
+	parseInvocation(context, result, argumentList, distortionStack)
 	{
 		let state;
 		let segment;
@@ -1088,8 +1109,7 @@ class ExpressionParser
 			reading: true,
 			hasCount: false,
 			hasArgumentList: false,
-			distortionValue: new BigDecimal(0),
-			distorationType: Distortion.OPERATION_NONE,
+			distortionStack: distortionStack,
 			count: false,
 			argumentList: {},
 			delimited: false
@@ -1109,7 +1129,6 @@ class ExpressionParser
 			if(!(name in context.segment))
 				throw(new ReferenceError(`Reference to undefined section "${name}" at ${state.current.position}`));
 			segment = context.segment[name];
-			const segmentName = name;
 			state.current = this.stream.getNext();
 			while(state.reading === true && state.current)
 			{
@@ -1118,17 +1137,14 @@ class ExpressionParser
 					case Token.TYPE_OPERATOR_ROTATE:
 					case Token.TYPE_OPERATOR_SKEW_HORIZONTAL:
 					case Token.TYPE_OPERATOR_SKEW_VERTICAL:
-						if(state.distorationType !== Distortion.OPERATION_NONE)
-							throw(new Error(`Encountered distortion operator, but distortion for segment "${name}" is already specified (parameter value: ${state.distortionValue})`));
 						this.stream.getNext();
 						expResult = new ExpressionParser(this.stream).parse(context, 0, argumentList, false, {x: result.x, y: result.y}, Value.TYPE_THETA, [Token.TYPE_OPERATOR_ROTATE, Token.TYPE_OPERATOR_SKEW_HORIZONTAL, Token.TYPE_OPERATOR_SKEW_VERTICAL]);
-						state.distortionValue = expResult.accumulator;
-						state.distorationType =
+						state.distortionStack.push(new Distortion(
 						({
 							[Token.TYPE_OPERATOR_ROTATE]: Distortion.OPERATION_ROTATE,
 							[Token.TYPE_OPERATOR_SKEW_HORIZONTAL]: Distortion.OPERATION_SKEW_HORIZONTAL,
 							[Token.TYPE_OPERATOR_SKEW_VERTICAL]: Distortion.OPERATION_SKEW_VERTICAL
-						})[state.current.type];
+						})[state.current.type], expResult.accumulator));
 						state.current = this.stream.getCurrent();
 						continue;
 					case Token.TYPE_BRACKET:
@@ -1160,12 +1176,6 @@ class ExpressionParser
 													if(context.segment[name])
 														throw(new ReferenceError(`Argument "${name}" is already defined as a segment`));
 													break;
-												case Token.TYPE_OPERATOR_ROTATE:
-												case Token.TYPE_OPERATOR_SKEW_HORIZONTAL:
-												case Token.TYPE_OPERATOR_SKEW_VERTICAL:
-													if(state.distorationType !== Distortion.OPERATION_NONE)
-														throw(new Error(`Encountered distortion operator, but distortion for segment "${segmentName}" is already specified (parameter value: ${state.distortionValue})`));
-													break;
 												case Token.TYPE_OPERATOR_REPEAT:
 													if(state.hasCount)
 														throw(new ReferenceError(`Execution count is already defined for this invocation`));
@@ -1195,12 +1205,12 @@ class ExpressionParser
 												case Token.TYPE_OPERATOR_ROTATE:
 												case Token.TYPE_OPERATOR_SKEW_HORIZONTAL:
 												case Token.TYPE_OPERATOR_SKEW_VERTICAL:
-													state.distortionValue = expResult.accumulator;
-													state.distorationType = ({
+													state.distortionStack.push(new Distortion(
+													({
 														[Token.TYPE_OPERATOR_ROTATE]: Distortion.OPERATION_ROTATE,
 														[Token.TYPE_OPERATOR_SKEW_HORIZONTAL]: Distortion.OPERATION_SKEW_HORIZONTAL,
 														[Token.TYPE_OPERATOR_SKEW_VERTICAL]: Distortion.OPERATION_SKEW_VERTICAL
-													})[type];
+													})[type], expResult.accumulator));
 													break;
 												case Token.TYPE_OPERATOR_REPEAT:
 													state.count = expResult.accumulator.toNumber();
@@ -1248,7 +1258,7 @@ class ExpressionParser
 			for(index = 1; index <= state.count; index++)
 			{
 				inner = new PathParser(new TokenStream(segment));
-				inner.parse(context, result, state.distorationType, state.distortionValue, index, state.argumentList);
+				inner.parse(context, result, state.distortionStack.concat(), index, state.argumentList);
 				result.stack.pop();
 			}
 			state.reading = false;

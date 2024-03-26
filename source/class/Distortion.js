@@ -2,73 +2,102 @@ import BigDecimal from "./BigDecimal";
 
 export default class Distortion
 {
-	static OPERATION_NONE = 0;
 	static OPERATION_ROTATE = 1;
 	static OPERATION_SKEW_HORIZONTAL = 2;
 	static OPERATION_SKEW_VERTICAL = 3;
 
-	static #rotate(x0, y0, x1, y1, distortionValue)
+	constructor(type, value)
 	{
-		var cosine;
-		var sine;
-
-		x1 = x1.subtract(x0);
-		y1 = y1.subtract(y0);
-		distortionValue = (distortionValue.toNumber() % 360) * Math.PI / 180;
-		cosine = Math.cos(distortionValue);
-		sine = Math.sin(distortionValue);
-		if(Math.abs(cosine - sine) < Number.EPSILON * 2)
-			sine = cosine;
-		else
-			if(Math.abs(cosine + sine) < Number.EPSILON * 2)
-				cosine = sine;
-		if(Math.abs(cosine) < Number.EPSILON)
-			cosine = 0;
-		if(Math.abs(sine) < Number.EPSILON)
-			sine = 0;
-	
-		return(
-		{
-			x: x0.add(x1.multiplyBy(cosine)).subtract(y1.multiplyBy(sine)),
-			y: y0.add(y1.multiplyBy(cosine)).add(x1.multiplyBy(sine))
-		});
-	}
-	
-	static #skewX(x0, y0, x1, y1, distortionValue)
-	{
-		return(
-		{
-			x: x0.add(x1.subtract(x0).subtract(y1.multiplyBy(Math.tan((distortionValue.toNumber() % 360) * Math.PI / 180)))),
-			y: y1
-		});
-	}
-
-	static #skewY(x0, y0, x1, y1, distortionValue)
-	{
-		return(
-		{
-			x: x1,
-			y: y0.add(y1.subtract(y0).subtract(x1.multiplyBy(Math.tan((distortionValue.toNumber() % 360) * Math.PI / 180))))
-		});
-	}
-
-	static #fixPoint(point, relative, topX, topY, distortionType, result)
-	{
-		if(distortionType === Distortion.OPERATION_SKEW_VERTICAL)
-			point.x = topX.value;
-		else
-			if(topX.fixed)
-				point.x = relative ? topX.value.subtract(result.x) : topX.value;
-		if(distortionType === Distortion.OPERATION_SKEW_HORIZONTAL)
-			point.y = topY.value;
-		else
-			if(topY.fixed)
-				point.y = relative ? topY.value.subtract(result.y) : topY.value;
+		this.type = type;
+		this.value = value;
 
 		return;
 	}
 
-	static applyDistortion(context, top, result, distortionType, distortionValue)
+	#getName()
+	{
+		return(
+		({
+			[Distortion.OPERATION_ROTATE]: "Rotate",
+			[Distortion.OPERATION_SKEW_HORIZONTAL]: "Vertical skew",
+			[Distortion.OPERATION_SKEW_VERTICAL]: "Horizontal skew",
+		})[this.type] ?? "Unknown");
+	}
+
+	toString()
+	{
+		return(`${this.#getName()}: ${this.value}`);
+	}
+
+	run(x0, y0, x1, y1)
+	{
+		let result;
+		let distortionValue;
+
+		switch(this.type)
+		{
+			case Distortion.OPERATION_ROTATE:
+				let cosine;
+				let sine;
+		
+				x1 = x1.subtract(x0);
+				y1 = y1.subtract(y0);
+				distortionValue = (this.value.toNumber() % 360) * Math.PI / 180;
+				cosine = Math.cos(distortionValue);
+				sine = Math.sin(distortionValue);
+				if(Math.abs(cosine - sine) < Number.EPSILON * 2)
+					sine = cosine;
+				else
+					if(Math.abs(cosine + sine) < Number.EPSILON * 2)
+						cosine = sine;
+				if(Math.abs(cosine) < Number.EPSILON)
+					cosine = 0;
+				if(Math.abs(sine) < Number.EPSILON)
+					sine = 0;
+			
+				result =
+				{
+					x: x0.add(x1.multiplyBy(cosine)).subtract(y1.multiplyBy(sine)),
+					y: y0.add(y1.multiplyBy(cosine)).add(x1.multiplyBy(sine))
+				};
+				break;
+			case Distortion.OPERATION_SKEW_HORIZONTAL:
+				result =
+				{
+					x: x0.add(x1.subtract(x0).subtract(y1.multiplyBy(Math.tan((this.value.toNumber() % 360) * Math.PI / 180)))),
+					y: y1
+				};
+				break;
+			case Distortion.OPERATION_SKEW_VERTICAL:
+				result =
+				{
+					x: x1,
+					y: y0.add(y1.subtract(y0).subtract(x1.multiplyBy(Math.tan((distortionValue.toNumber() % 360) * Math.PI / 180))))
+				};
+				break;
+			default:
+				break;
+		}
+
+		return(result);
+	}
+
+	static runStack(x0, y0, x1, y1, distortionStack)
+	{
+		return(distortionStack.reduceRight((carry, item) => item.run(x0, y0, carry.x, carry.y), {x: x1, y: y1}));
+	}
+
+	static #fixPoint(point, relative, topX, topY, result)
+	{
+		if(topX.fixed)
+			point.x = relative ? topX.value.subtract(result.x) : topX.value;
+		if(topY.fixed)
+			point.y = relative ? topY.value.subtract(result.y) : topY.value;
+
+		return;
+	}
+
+	static applyDistortion(context, top, result, distortionStack)
 	{
 		let origin;
 		let point;
@@ -90,12 +119,6 @@ export default class Distortion
 			throw(new SyntaxError(`Too few arguments for command ${top[0]}`));
 		if(result.fixNext)
 			throw(new SyntaxError(`Dangling fix operator after command ${top[0]}`));
-		const distortionFunction =
-		({
-			[Distortion.OPERATION_ROTATE]: this.#rotate,
-			[Distortion.OPERATION_SKEW_HORIZONTAL]: this.#skewX,
-			[Distortion.OPERATION_SKEW_VERTICAL]: this.#skewY
-		})[distortionType] || this.#rotate;
 		// TODO: Eventually, all values will need to be rounded just beyond this point
 		switch(command)
 		{
@@ -105,9 +128,9 @@ export default class Distortion
 					x: top[6].value,
 					y: top[7].value
 				};
-				if(distortionType !== Distortion.OPERATION_NONE)
-					point = distortionFunction(origin.x, origin.y, point.x, point.y, distortionValue);
-				Distortion.#fixPoint(point, relative, top[6], top[7], distortionType, result);
+				if(distortionStack.length)
+					point = Distortion.runStack(origin.x, origin.y, point.x, point.y, distortionStack);
+				Distortion.#fixPoint(point, relative, top[6], top[7], result);
 				top =
 				[
 					top[0],
@@ -136,13 +159,13 @@ export default class Distortion
 					x: top[5].value,
 					y: top[6].value
 				};
-				if(distortionType !== Distortion.OPERATION_NONE)
+				if(distortionStack.length)
 				{
-					point1 = distortionFunction(origin.x, origin.y, point1.x, point1.y, distortionValue);
-					point2 = distortionFunction(origin.x, origin.y, point2.x, point2.y, distortionValue);
-					point = distortionFunction(origin.x, origin.y, point.x, point.y, distortionValue);
+					point1 = Distortion.runStack(origin.x, origin.y, point1.x, point1.y, distortionStack);
+					point2 = Distortion.runStack(origin.x, origin.y, point2.x, point2.y, distortionStack);
+					point = Distortion.runStack(origin.x, origin.y, point.x, point.y, distortionStack);
 				}
-				Distortion.#fixPoint(point, relative, top[5], top[6], distortionType, result);
+				Distortion.#fixPoint(point, relative, top[5], top[6], result);
 				top =
 				[
 					top[0],
@@ -166,12 +189,12 @@ export default class Distortion
 					x: top[3].value,
 					y: top[4].value
 				};
-				if(distortionType !== Distortion.OPERATION_NONE)
+				if(distortionStack.length)
 				{
-					point1 = distortionFunction(origin.x, origin.y, point1.x, point1.y, distortionValue);
-					point = distortionFunction(origin.x, origin.y, point.x, point.y, distortionValue);
+					point1 = Distortion.runStack(origin.x, origin.y, point1.x, point1.y, distortionStack);
+					point = Distortion.runStack(origin.x, origin.y, point.x, point.y, distortionStack);
 				}
-				Distortion.#fixPoint(point, relative, top[3], top[4], distortionType, result);
+				Distortion.#fixPoint(point, relative, top[3], top[4], result);
 				top =
 				[
 					top[0],
@@ -191,10 +214,10 @@ export default class Distortion
 					x: topX.value,
 					y: topY.value
 				};
-				if(distortionType !== Distortion.OPERATION_NONE)
-					point = distortionFunction(origin.x, origin.y, point.x, point.y, distortionValue);
+				if(distortionStack.length)
+					point = Distortion.runStack(origin.x, origin.y, point.x, point.y, distortionStack);
 				lastAngle = Math.atan2(point.y.subtract(origin.y).toNumber(), point.x.subtract(origin.x).toNumber()) * 180 / Math.PI;
-				Distortion.#fixPoint(point, relative, topX, topY, distortionType, result);
+				Distortion.#fixPoint(point, relative, topX, topY, result);
 				top = point.x.equals(origin.x)
 					?
 					(
@@ -240,9 +263,9 @@ export default class Distortion
 					x: top[1].value,
 					y: top[2].value
 				}
-				if(distortionType !== Distortion.OPERATION_NONE)
-					point = distortionFunction(origin.x, origin.y, point.x, point.y, distortionValue);
-				Distortion.#fixPoint(point, relative, top[1], top[2], distortionType, result);
+				if(distortionStack.length)
+					point = Distortion.runStack(origin.x, origin.y, point.x, point.y, distortionStack);
+				Distortion.#fixPoint(point, relative, top[1], top[2], result);
 				top = [top[0], point.x, point.y];
 				if(context.optimisation.path.combineCommands && command === "m" && result.sequence.length > 0)
 				{

@@ -167,7 +167,7 @@ export default class ExpressionParser
 					expResult.x = position.x;
 					expResult.y = position.y;
 					expResult.arity = [];
-					new ExpressionParser(this.stream).parseInvocation(context, expResult, argumentList);
+					new ExpressionParser(this.stream).parseInvocation(context, expResult, argumentList, []);
 					result.data = Token.TYPE_NUMBER;
 					switch(type)
 					{
@@ -277,7 +277,7 @@ export default class ExpressionParser
 		return(result);
 	}
 
-	parseInvocation(context, result, argumentList)
+	parseInvocation(context, result, argumentList, distortionStack)
 	{
 		let state;
 		let segment;
@@ -293,8 +293,7 @@ export default class ExpressionParser
 			reading: true,
 			hasCount: false,
 			hasArgumentList: false,
-			distortionValue: new BigDecimal(0),
-			distorationType: Distortion.OPERATION_NONE,
+			distortionStack: distortionStack,
 			count: false,
 			argumentList: {},
 			delimited: false
@@ -314,7 +313,6 @@ export default class ExpressionParser
 			if(!(name in context.segment))
 				throw(new ReferenceError(`Reference to undefined section "${name}" at ${state.current.position}`));
 			segment = context.segment[name];
-			const segmentName = name;
 			state.current = this.stream.getNext();
 			while(state.reading === true && state.current)
 			{
@@ -323,17 +321,14 @@ export default class ExpressionParser
 					case Token.TYPE_OPERATOR_ROTATE:
 					case Token.TYPE_OPERATOR_SKEW_HORIZONTAL:
 					case Token.TYPE_OPERATOR_SKEW_VERTICAL:
-						if(state.distorationType !== Distortion.OPERATION_NONE)
-							throw(new Error(`Encountered distortion operator, but distortion for segment "${name}" is already specified (parameter value: ${state.distortionValue})`));
 						this.stream.getNext();
 						expResult = new ExpressionParser(this.stream).parse(context, 0, argumentList, false, {x: result.x, y: result.y}, Value.TYPE_THETA, [Token.TYPE_OPERATOR_ROTATE, Token.TYPE_OPERATOR_SKEW_HORIZONTAL, Token.TYPE_OPERATOR_SKEW_VERTICAL]);
-						state.distortionValue = expResult.accumulator;
-						state.distorationType =
+						state.distortionStack.push(new Distortion(
 						({
 							[Token.TYPE_OPERATOR_ROTATE]: Distortion.OPERATION_ROTATE,
 							[Token.TYPE_OPERATOR_SKEW_HORIZONTAL]: Distortion.OPERATION_SKEW_HORIZONTAL,
 							[Token.TYPE_OPERATOR_SKEW_VERTICAL]: Distortion.OPERATION_SKEW_VERTICAL
-						})[state.current.type];
+						})[state.current.type], expResult.accumulator));
 						state.current = this.stream.getCurrent();
 						continue;
 					case Token.TYPE_BRACKET:
@@ -365,12 +360,6 @@ export default class ExpressionParser
 													if(context.segment[name])
 														throw(new ReferenceError(`Argument "${name}" is already defined as a segment`));
 													break;
-												case Token.TYPE_OPERATOR_ROTATE:
-												case Token.TYPE_OPERATOR_SKEW_HORIZONTAL:
-												case Token.TYPE_OPERATOR_SKEW_VERTICAL:
-													if(state.distorationType !== Distortion.OPERATION_NONE)
-														throw(new Error(`Encountered distortion operator, but distortion for segment "${segmentName}" is already specified (parameter value: ${state.distortionValue})`));
-													break;
 												case Token.TYPE_OPERATOR_REPEAT:
 													if(state.hasCount)
 														throw(new ReferenceError(`Execution count is already defined for this invocation`));
@@ -400,12 +389,12 @@ export default class ExpressionParser
 												case Token.TYPE_OPERATOR_ROTATE:
 												case Token.TYPE_OPERATOR_SKEW_HORIZONTAL:
 												case Token.TYPE_OPERATOR_SKEW_VERTICAL:
-													state.distortionValue = expResult.accumulator;
-													state.distorationType = ({
+													state.distortionStack.push(new Distortion(
+													({
 														[Token.TYPE_OPERATOR_ROTATE]: Distortion.OPERATION_ROTATE,
 														[Token.TYPE_OPERATOR_SKEW_HORIZONTAL]: Distortion.OPERATION_SKEW_HORIZONTAL,
 														[Token.TYPE_OPERATOR_SKEW_VERTICAL]: Distortion.OPERATION_SKEW_VERTICAL
-													})[type];
+													})[type], expResult.accumulator));
 													break;
 												case Token.TYPE_OPERATOR_REPEAT:
 													state.count = expResult.accumulator.toNumber();
@@ -453,7 +442,7 @@ export default class ExpressionParser
 			for(index = 1; index <= state.count; index++)
 			{
 				inner = new PathParser(new TokenStream(segment));
-				inner.parse(context, result, state.distorationType, state.distortionValue, index, state.argumentList);
+				inner.parse(context, result, state.distortionStack.concat(), index, state.argumentList);
 				result.stack.pop();
 			}
 			state.reading = false;

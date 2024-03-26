@@ -55,7 +55,7 @@ export default class PathParser
 		return(result);
 	}
 
-	parse(context, result = Value.getEmptyResult(), distortionType = Distortion.OPERATION_NONE, distortionValue = new BigDecimal(0), index = 1, argumentList)
+	parse(context, result = Value.getEmptyResult(), distortionStack = [], index = 1, argumentList)
 	{
 		let state;
 		let top;
@@ -76,7 +76,7 @@ export default class PathParser
 					if(result.arity === null && state.current.name.toLowerCase() !== "m")
 						throw(new SyntaxError("Paths must begin with a Move To command"));
 					if(top)
-						Distortion.applyDistortion(context, top, result, distortionType, distortionValue);
+						Distortion.applyDistortion(context, top, result, distortionStack);
 					result.arity = state.current.value;
 					result.pending = result.arity.length;
 					top = [state.current.name];
@@ -89,7 +89,7 @@ export default class PathParser
 					break;
 				case Token.TYPE_END:
 					if(top)
-						Distortion.applyDistortion(context, top, result, distortionType, distortionValue);
+						Distortion.applyDistortion(context, top, result, distortionStack);
 					state.reading = false;
 					break;
 				case Token.TYPE_IDENTIFIER:
@@ -105,10 +105,10 @@ export default class PathParser
 					{
 						if(top)
 						{
-							Distortion.applyDistortion(context, top, result, distortionType, distortionValue);
+							Distortion.applyDistortion(context, top, result, distortionStack);
 							top = null;
 						}
-						new ExpressionParser(this.stream).parseInvocation(context, result, argumentList);
+						new ExpressionParser(this.stream).parseInvocation(context, result, argumentList, distortionStack.concat());
 						state.current = this.stream.getCurrent();
 						continue;
 					}
@@ -117,7 +117,7 @@ export default class PathParser
 						throw(new Error(`Expected command, but found "${state.current.name}"`));
 					if(!result.pending)
 					{
-						Distortion.applyDistortion(context, top, result, distortionType, distortionValue);
+						Distortion.applyDistortion(context, top, result, distortionStack);
 						result.pending = result.arity.length;
 						top = [top[0]];
 					}
