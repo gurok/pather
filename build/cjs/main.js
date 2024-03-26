@@ -1625,6 +1625,7 @@ export function transform(text, configuration, require)
 */
 
 (function() {
+	let timeStart = Date.now();
 	let parameter = process.argv.slice(2);
 	let valid = true;
 	let reading = true;
@@ -1672,6 +1673,10 @@ export function transform(text, configuration, require)
 				configuration.extract = true;
 				parameter.shift();
 				break;
+			case "--report":
+				configuration.report = true;
+				parameter.shift();
+				break;
 			case "--":
 				parameter.shift();
 			default:
@@ -1692,6 +1697,7 @@ options      One or more of the following switches:
   --stripComments                   Strip XML comments from the output document
   --combinePathCommands             Combine repeated commands in path data, e.g. h 30 h 30 becomes h 60
   --extract                         Extract all elements with an ID to individual files (destination is a directory)
+  --report                          Report information before and after processing a file
 units        Variable values to be passed to the Pather environment
              Name/value pairs separated by "=", e.g. myUnit=3 myOtherUnit=4.2
 `
@@ -1701,6 +1707,8 @@ units        Variable values to be passed to the Pather environment
 	{
 		let source = parameter.shift();
 		configuration.destination = parameter.shift();
+		if(configuration.report)
+			console.log(`Processing "${source}"...`);
 		configuration.unit = {};
 		reading = true;
 		while(reading && parameter.length) {
@@ -1743,6 +1751,8 @@ units        Variable values to be passed to the Pather environment
 
 				return;
 			});
+			if(configuration.report)
+				console.log(`Completed successfully in ${Date.now() - timeStart} ms\n`);
 		}
 	}
 
