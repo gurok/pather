@@ -684,6 +684,14 @@ class PathParser
 		return(result.sequence.map(i => "" + i[0].toString() + (i.length > 1 ? " " + i.slice(1).join(",") : "")).join(" "));
 	}
 
+	static parseValueAttribute(context, text)
+	{
+		let parser = new PathParser(new TokenStream(text));
+		let pathResult = parser.parseList(context);
+
+		return(PathParser.resultToString(pathResult, context.optimisation.path.precision));
+	}
+
 	parseList(context, result = Value.getEmptyResult(), limit = -1)
 	{
 		let state;
@@ -1280,7 +1288,7 @@ class Transformer
 		return((new (typeof(DOMParser) === "undefined" ? require('xmldom').DOMParser : DOMParser)()).parseFromString(text, "text/xml"));
 	}
 
-	#parseUnitList(context, list)
+	static #parseUnitList(context, list)
 	{
 		let stack = [];
 		let item;
@@ -1327,7 +1335,7 @@ class Transformer
 		}
 	}
 
-	#parseSegmentList(context, list)
+	static #parseSegmentList(context, list)
 	{
 		list.forEach(i =>
 		{
@@ -1406,6 +1414,85 @@ class Transformer
 				item.parentNode.removeChild(item);
 			});
 		} while(list.length);
+	}
+
+	static #insertTemplateContent(template, replacement)
+	{
+		const copy = template.cloneNode(true);
+		const list = Array.from(copy.getElementsByTagName("*"));
+		list.forEach(element =>
+			Array.from(element.attributes).forEach(attribute =>
+				Object.entries(replacement).forEach(([replaceKey, replaceValue]) =>
+					attribute.value = attribute.value.replaceAll(replaceKey, replaceValue)
+				)
+			)
+		);
+		if(copy.firstChild && !copy.firstChild.tagName && copy.firstChild.nodeValue.trim() === "")
+				copy.removeChild(copy.firstChild);
+		while(copy.firstChild)
+			template.parentNode.insertBefore(copy.firstChild, template);
+
+		return;
+	}
+
+	static #formatTemplateValue(value, format)
+	{
+		return(
+			format.length && format === "f".repeat(format.length)
+			?
+				value.toString(16).padStart(format.length, "0")
+			:
+				format === "0".repeat(format.length)
+				?
+					value.toString().padStart(format.length, "0")
+				:
+					value.toString()
+		);
+	}
+
+	static #applyTemplate(context, document)
+	{
+		let template = document.getElementsByTagName("template")[0];
+		while(template)
+		{
+			switch(template.getAttribute("type"))
+			{
+				case "repeat":
+					let start = parseInt(PathParser.parseValueAttribute(context, template.getAttribute("start"))) || 0;
+					let stop = parseInt(PathParser.parseValueAttribute(context, template.getAttribute("stop"))) || 0;
+					let step = parseInt(PathParser.parseValueAttribute(context, template.getAttribute("step"))) || 1;
+					let columnCount = parseInt(PathParser.parseValueAttribute(context, template.getAttribute("column-count"))) || 0;
+					let iFormat = template.getAttribute("i-format") ?? "";
+					let xFormat = template.getAttribute("x-format") ?? "";
+					let yFormat = template.getAttribute("y-format") ?? "";
+					let y = Math.floor(start / columnCount);
+					let x = start - (y * columnCount);
+					for(let index = start; index <= stop; index += step)
+					{
+						Transformer.#insertTemplateContent(template,
+						{
+							"?x?": Transformer.#formatTemplateValue(x, xFormat),
+							"?y?": Transformer.#formatTemplateValue(y, yFormat),
+							"?i?": Transformer.#formatTemplateValue(index, iFormat)
+						});
+						x++;
+						if(x === columnCount)
+						{
+							x = 0;
+							y++;
+						}
+					}
+					["start", "stop", "column-count"].forEach(item =>
+						{
+							template.setAttribute("d", );
+						});
+					break;
+			}
+			template.parentNode.removeChild(template);
+			template = document.getElementsByTagName("template")[0];
+		}
+
+		return;
 	}
 
 	#extractIsolated(documentElement, base, list)
@@ -1496,10 +1583,11 @@ class Transformer
 			}
 		};
 		this.#parseIncludeList(configuration);
-		this.#parseUnitList(context, Array.from(this.document.getElementsByTagName("unit")));
+		Transformer.#parseUnitList(context, Array.from(this.document.getElementsByTagName("unit")));
 		for(let item in configuration.unit)
 			context.unit[item] = configuration.unit[item];
-		this.#parseSegmentList(context, Array.from(this.document.getElementsByTagName("segment")));
+		Transformer.#parseSegmentList(context, Array.from(this.document.getElementsByTagName("segment")));
+		Transformer.#applyTemplate(context, this.document);
 		let list = Array.from(this.document.getElementsByTagName("path"));
 		context.depth = 0;
 		while(list.length)
@@ -1536,24 +1624,17 @@ class Transformer
 				target.attribute.forEach(attribute =>
 				{
 					let attributeName;
-					let attributeLimit;
 
 					if(typeof(attribute) === "string")
 					{
 						attributeName = attribute;
-						attributeLimit = 1;
 					}
 					else
 					{
 						attributeName = attribute.name;
-						attributeLimit = attribute.limit;
 					}
 					if(item.hasAttribute(attributeName))
-					{
-						let parser = new PathParser(new TokenStream(item.getAttribute(attributeName)));
-						let viewBoxResult = parser.parseList(context, Value.getEmptyResult(), attributeLimit);
-						item.setAttribute(attributeName, PathParser.resultToString(viewBoxResult, context.optimisation.path.precision));
-					}
+						item.setAttribute(attributeName, PathParser.parseValueAttribute(context, item.getAttribute(attributeName)));
 
 					return;
 				});

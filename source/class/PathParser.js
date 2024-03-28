@@ -19,6 +19,14 @@ export default class PathParser
 		return(result.sequence.map(i => "" + i[0].toString() + (i.length > 1 ? " " + i.slice(1).join(",") : "")).join(" "));
 	}
 
+	static parseValueAttribute(context, text)
+	{
+		let parser = new PathParser(new TokenStream(text));
+		let pathResult = parser.parseList(context);
+
+		return(PathParser.resultToString(pathResult, context.optimisation.path.precision));
+	}
+
 	parseList(context, result = Value.getEmptyResult(), limit = -1)
 	{
 		let state;
