@@ -261,27 +261,30 @@ export default class Transformer
 				else
 				{
 					let nextNode = cursor.nextSibling ?? cursor.parentNode;
-					let ancestor = cursor;
-					while(ancestor && ancestor.tagName !== "defs")
-						ancestor = ancestor.parentNode;
-					if(!ancestor && cursor.tagName && cursor.hasAttribute("id"))
+					if(cursor.tagName && cursor.hasAttribute("id"))
 					{
-						if(cursor.getAttribute("id") !== i.getAttribute("id") || target !== null)
-						{
-							let parent = cursor.parentNode;
-							if(cursor.previousSibling && !cursor.previousSibling.tagName && cursor.previousSibling.nodeValue.trim() === "")
-								parent.removeChild(cursor.previousSibling);
-							parent.removeChild(cursor);
-						}
-						else
-						{
-							if(target === null)
+						let ancestor = cursor;
+						while(ancestor && ancestor.tagName !== "defs")
+							ancestor = ancestor.parentNode;
+						if(!ancestor)
+							if(cursor.getAttribute("id") !== i.getAttribute("id") || target !== null)
 							{
-								target = cursor;
-								target.removeAttribute("id");
+								let parent = cursor.parentNode;
+								if(cursor.previousSibling && !cursor.previousSibling.tagName && cursor.previousSibling.nodeValue.trim() === "")
+									parent.removeChild(cursor.previousSibling);
+								parent.removeChild(cursor);
 							}
+							else
+							{
+								if(target === null)
+								{
+									target = cursor;
+									target.removeAttribute("id");
+								}
+								visited.push(cursor);
+							}
+						else
 							visited.push(cursor);
-						}
 					}
 					else
 						visited.push(cursor);
@@ -289,23 +292,28 @@ export default class Transformer
 				}
 			}
 			const chain = [];
-			while(target && !target.hasAttribute("dir"))
-			{
-				chain.push(target);
-				target = target.parentNode;
-			}
 			if(target)
-				if(target.attributes.length === 1 && target.parentNode)
+			{
+				while(target && !target.hasAttribute("dir"))
 				{
-					const parent = target.parentNode;
-					parent.insertBefore(chain[chain.length - 1], target);
-					parent.removeChild(target);
+					chain.push(target);
+					target = target.parentNode;
 				}
-				else
-					target.removeAttribute("dir");
+				if(target)
+					if(target.attributes.length === 1 && target.parentNode)
+					{
+						const parent = target.parentNode;
+						parent.insertBefore(chain[chain.length - 1], target);
+						parent.removeChild(target);
+					}
+					else
+						target.removeAttribute("dir");
+			}
+			else
+				container = null;
 
 			return([base + (target ? target.getAttribute("dir") + path.sep : "") + i.getAttribute("id") + ".svg", container]);
-		}));
+		})).filter(([, node]) => node !== null);
 	}
 
 	transform(configuration)

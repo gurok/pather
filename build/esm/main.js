@@ -494,7 +494,10 @@ class Distortion
 					top[0],
 					top[1].value,
 					top[2].value,
-					top[3].fixed ? top[3].value : top[3].value.add(distortionValue),
+					top[3].fixed ? top[3].value : distortionStack.reduceRight((carry, item) =>
+					{
+						return(item.type === Distortion.OPERATION_ROTATE ? carry.add(item.value) : carry);
+					}, top[3].value),
 					top[4].value,
 					top[5].value,
 					point.x,
@@ -1517,12 +1520,13 @@ class Transformer
 	{
 		const path = require('path');
 
-		return(list.filter(i => i.hasAttribute("id")).map(i =>
+		return (list.filter(i => i.hasAttribute("id")).map(i =>
 		{
 			let container = documentElement.cloneNode(true);
 			let cursor = container.firstChild;
 			let target = null;
 			let visited = [];
+			console.log("Looking for ", i.getAttribute("id"));
 			while(cursor)
 			{
 				if(cursor.firstChild && !visited.includes(cursor.firstChild))
@@ -1533,27 +1537,33 @@ class Transformer
 				else
 				{
 					let nextNode = cursor.nextSibling ?? cursor.parentNode;
-					let ancestor = cursor;
-					while(ancestor && ancestor.tagName !== "defs")
-						ancestor = ancestor.parentNode;
-					if(!ancestor && cursor.tagName && cursor.hasAttribute("id"))
+					if(cursor.tagName && cursor.hasAttribute("id"))
 					{
-						if(cursor.getAttribute("id") !== i.getAttribute("id") || target !== null)
-						{
-							let parent = cursor.parentNode;
-							if(cursor.previousSibling && !cursor.previousSibling.tagName && cursor.previousSibling.nodeValue.trim() === "")
-								parent.removeChild(cursor.previousSibling);
-							parent.removeChild(cursor);
-						}
-						else
-						{
-							if(target === null)
+						let ancestor = cursor;
+						console.log("Ancestor search", cursor.tagName, cursor.getAttribute("id"));
+						while(ancestor && ancestor.tagName !== "defs")
+							ancestor = ancestor.parentNode;
+						console.log("Completed ", (ancestor ? ancestor.tagName : "(null)"));
+						if(!ancestor)
+							if(cursor.getAttribute("id") !== i.getAttribute("id") || target !== null)
 							{
-								target = cursor;
-								target.removeAttribute("id");
+								console.log("Got here because", cursor.getAttribute("id") !== i.getAttribute("id"), target !== null);
+								let parent = cursor.parentNode;
+								if(cursor.previousSibling && !cursor.previousSibling.tagName && cursor.previousSibling.nodeValue.trim() === "")
+									parent.removeChild(cursor.previousSibling);
+								parent.removeChild(cursor);
 							}
+							else
+							{
+								if(target === null)
+								{
+									target = cursor;
+									target.removeAttribute("id");
+								}
+								visited.push(cursor);
+							}
+						else
 							visited.push(cursor);
-						}
 					}
 					else
 						visited.push(cursor);
@@ -1561,23 +1571,29 @@ class Transformer
 				}
 			}
 			const chain = [];
-			while(target && !target.hasAttribute("dir"))
-			{
-				chain.push(target);
-				target = target.parentNode;
-			}
 			if(target)
-				if(target.attributes.length === 1 && target.parentNode)
+			{
+				while(target && !target.hasAttribute("dir"))
 				{
-					const parent = target.parentNode;
-					parent.insertBefore(chain[chain.length - 1], target);
-					parent.removeChild(target);
+					chain.push(target);
+					target = target.parentNode;
 				}
-				else
-					target.removeAttribute("dir");
+				if(target)
+					if(target.attributes.length === 1 && target.parentNode)
+					{
+						const parent = target.parentNode;
+						parent.insertBefore(chain[chain.length - 1], target);
+						parent.removeChild(target);
+						console.log("Remove ", target);
+					}
+					else
+						target.removeAttribute("dir");
+			}
+			else
+				container = null;
 
 			return([base + (target ? target.getAttribute("dir") + path.sep : "") + i.getAttribute("id") + ".svg", container]);
-		}));
+		})).filter(([, node]) => node !== null);
 	}
 
 	transform(configuration)

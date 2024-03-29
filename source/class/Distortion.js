@@ -136,7 +136,10 @@ export default class Distortion
 					top[0],
 					top[1].value,
 					top[2].value,
-					top[3].fixed ? top[3].value : top[3].value.add(distortionValue),
+					top[3].fixed ? top[3].value : distortionStack.reduceRight((carry, item) =>
+					{
+						return(item.type === Distortion.OPERATION_ROTATE ? carry.add(item.value) : carry);
+					}, top[3].value),
 					top[4].value,
 					top[5].value,
 					point.x,
