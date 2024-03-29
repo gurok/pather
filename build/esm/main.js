@@ -1462,18 +1462,36 @@ class Transformer
 					let stop = parseInt(PathParser.parseValueAttribute(context, template.getAttribute("stop"))) || 0;
 					let step = parseInt(PathParser.parseValueAttribute(context, template.getAttribute("step"))) || 1;
 					let columnCount = parseInt(PathParser.parseValueAttribute(context, template.getAttribute("column-count"))) || 0;
+					let minimum = start < stop ? start : stop;
+					let maximum = start > stop ? start : stop;
+					let vMap = template.getAttribute("v-map").split(new RegExp("\\s*,\\s*", "g")).filter(item => item !== "").map(item =>
+					{
+						let [range, value] = item.split(new RegExp("\\s*:\\s*", "g"));
+						range = range.split("-");
+						if(range.length < 2)
+							range[1] = range[0];
+						else
+							if(range.length > 2)
+								range = range.slice(0, 2);
+						range = range.map((i, j) => i === "*" || i === "" ? (j === 0 ? minimum : maximum) : parseInt(i) || 0);
+
+						return({start: range[0], stop: range[1], value: value ?? ""});
+					});
 					let iFormat = template.getAttribute("i-format") ?? "";
+					let vFormat = template.getAttribute("v-format") ?? "";
 					let xFormat = template.getAttribute("x-format") ?? "";
 					let yFormat = template.getAttribute("y-format") ?? "";
 					let y = Math.floor(start / columnCount);
 					let x = start - (y * columnCount);
 					for(let index = start; index <= stop; index += step)
 					{
+						let v = vMap.find(item => index >= item.start && index <= item.stop)?.value ?? index;
 						Transformer.#insertTemplateContent(template,
 						{
 							"?x?": Transformer.#formatTemplateValue(x, xFormat),
 							"?y?": Transformer.#formatTemplateValue(y, yFormat),
-							"?i?": Transformer.#formatTemplateValue(index, iFormat)
+							"?i?": Transformer.#formatTemplateValue(index, iFormat),
+							"?v?": Transformer.#formatTemplateValue(v, vFormat)
 						});
 						x++;
 						if(x === columnCount)
