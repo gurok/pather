@@ -1528,7 +1528,6 @@ class Transformer
 			let cursor = container.firstChild;
 			let target = null;
 			let visited = [];
-			console.log("Looking for ", i.getAttribute("id"));
 			while(cursor)
 			{
 				if(cursor.firstChild && !visited.includes(cursor.firstChild))
@@ -1542,14 +1541,11 @@ class Transformer
 					if(cursor.tagName && cursor.hasAttribute("id"))
 					{
 						let ancestor = cursor;
-						console.log("Ancestor search", cursor.tagName, cursor.getAttribute("id"));
 						while(ancestor && ancestor.tagName !== "defs")
 							ancestor = ancestor.parentNode;
-						console.log("Completed ", (ancestor ? ancestor.tagName : "(null)"));
 						if(!ancestor)
 							if(cursor.getAttribute("id") !== i.getAttribute("id") || target !== null)
 							{
-								console.log("Got here because", cursor.getAttribute("id") !== i.getAttribute("id"), target !== null);
 								let parent = cursor.parentNode;
 								if(cursor.previousSibling && !cursor.previousSibling.tagName && cursor.previousSibling.nodeValue.trim() === "")
 									parent.removeChild(cursor.previousSibling);
@@ -1586,7 +1582,6 @@ class Transformer
 						const parent = target.parentNode;
 						parent.insertBefore(chain[chain.length - 1], target);
 						parent.removeChild(target);
-						console.log("Remove ", target);
 					}
 					else
 						target.removeAttribute("dir");
