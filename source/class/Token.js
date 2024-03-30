@@ -14,10 +14,11 @@ export default class Token
     static TYPE_OPERATOR_ROTATE           = 12;
     static TYPE_OPERATOR_SKEW_HORIZONTAL  = 13;
     static TYPE_OPERATOR_SKEW_VERTICAL    = 14;
-    static TYPE_OPERATOR_FIX              = 15;
-    static TYPE_OPERATOR_MEASURE          = 16;
-    static TYPE_OPERATOR_ASSIGN           = 17;
-    static TYPE_OPERATOR_REPEAT           = 18;
+    static TYPE_OPERATOR_REVERSE_ORDER    = 15;
+    static TYPE_OPERATOR_FIX              = 16;
+    static TYPE_OPERATOR_MEASURE          = 17;
+    static TYPE_OPERATOR_ASSIGN           = 18;
+    static TYPE_OPERATOR_REPEAT           = 19;
 
     constructor(type, name, value, position)
     {

@@ -18,10 +18,11 @@ class Token
     static TYPE_OPERATOR_ROTATE           = 12;
     static TYPE_OPERATOR_SKEW_HORIZONTAL  = 13;
     static TYPE_OPERATOR_SKEW_VERTICAL    = 14;
-    static TYPE_OPERATOR_FIX              = 15;
-    static TYPE_OPERATOR_MEASURE          = 16;
-    static TYPE_OPERATOR_ASSIGN           = 17;
-    static TYPE_OPERATOR_REPEAT           = 18;
+    static TYPE_OPERATOR_REVERSE_ORDER    = 15;
+    static TYPE_OPERATOR_FIX              = 16;
+    static TYPE_OPERATOR_MEASURE          = 17;
+    static TYPE_OPERATOR_ASSIGN           = 18;
+    static TYPE_OPERATOR_REPEAT           = 19;
 
     constructor(type, name, value, position)
     {
@@ -284,6 +285,11 @@ class TokenStream
             handler: value => value
         },
         {
+            type: Token.TYPE_OPERATOR_REVERSE_ORDER,
+            expression: new RegExp("^%o", ""),
+            handler: value => value
+        },
+        {
             type: Token.TYPE_OPERATOR_FIX,
             expression: new RegExp("^@", ""),
             handler: value => value
@@ -367,6 +373,7 @@ class Distortion
 	static OPERATION_ROTATE = 1;
 	static OPERATION_SKEW_HORIZONTAL = 2;
 	static OPERATION_SKEW_VERTICAL = 3;
+	static OPERATION_REVERSE_ORDER = 4;
 
 	constructor(type, value)
 	{
@@ -383,6 +390,7 @@ class Distortion
 			[Distortion.OPERATION_ROTATE]: "Rotate",
 			[Distortion.OPERATION_SKEW_HORIZONTAL]: "Vertical skew",
 			[Distortion.OPERATION_SKEW_VERTICAL]: "Horizontal skew",
+			[Distortion.OPERATION_REVERSE_ORDER]: "Reverse order"
 		})[this.type] ?? "Unknown");
 	}
 
@@ -435,6 +443,13 @@ class Distortion
 				{
 					x: x1,
 					y: y0.add(y1.subtract(y0).subtract(x1.multiplyBy(Math.tan((distortionValue.toNumber() % 360) * Math.PI / 180))))
+				};
+				break;
+			case Distortion.OPERATION_REVERSE_ORDER:
+				result =
+				{
+					x: x1,
+					y: y1
 				};
 				break;
 		}
@@ -668,7 +683,11 @@ class Distortion
 			if(!relative)
 				top[0] = top[0].toUpperCase();
 			/* TODO: Primitive optimiser someday? */
-			result.sequence.push(top);
+			const reverseList = distortionStack.filter(item => item.type === Distortion.OPERATION_REVERSE_ORDER);
+			if(reverseList.length % 2)
+				result.sequence.splice(reverseList[0].value.toNumber(), 0, top);
+			else
+				result.sequence.push(top);
 		}
 
 		return;
@@ -743,6 +762,13 @@ class PathParser
 			current: this.stream.getCurrent(),
 			reading: true
 		};
+		distortionStack.forEach(item =>
+		{
+			if(item.type === Distortion.OPERATION_REVERSE_ORDER)
+				item.value = new BigDecimal(result.sequence.length);
+
+			return;
+		});
 
 		while(state.reading && state.current)
 		{
@@ -1158,6 +1184,9 @@ class ExpressionParser
 						})[state.current.type], expResult.accumulator));
 						state.current = this.stream.getCurrent();
 						continue;
+					case Token.TYPE_OPERATOR_REVERSE_ORDER:
+						state.distortionStack.push(new Distortion(Distortion.OPERATION_REVERSE_ORDER, null));
+						break;
 					case Token.TYPE_BRACKET:
 						if(!state.hasArgumentList)
 						{

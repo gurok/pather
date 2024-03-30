@@ -5,6 +5,7 @@ export default class Distortion
 	static OPERATION_ROTATE = 1;
 	static OPERATION_SKEW_HORIZONTAL = 2;
 	static OPERATION_SKEW_VERTICAL = 3;
+	static OPERATION_REVERSE_ORDER = 4;
 
 	constructor(type, value)
 	{
@@ -21,6 +22,7 @@ export default class Distortion
 			[Distortion.OPERATION_ROTATE]: "Rotate",
 			[Distortion.OPERATION_SKEW_HORIZONTAL]: "Vertical skew",
 			[Distortion.OPERATION_SKEW_VERTICAL]: "Horizontal skew",
+			[Distortion.OPERATION_REVERSE_ORDER]: "Reverse order"
 		})[this.type] ?? "Unknown");
 	}
 
@@ -73,6 +75,13 @@ export default class Distortion
 				{
 					x: x1,
 					y: y0.add(y1.subtract(y0).subtract(x1.multiplyBy(Math.tan((distortionValue.toNumber() % 360) * Math.PI / 180))))
+				};
+				break;
+			case Distortion.OPERATION_REVERSE_ORDER:
+				result =
+				{
+					x: x1,
+					y: y1
 				};
 				break;
 			default:
@@ -308,7 +317,11 @@ export default class Distortion
 			if(!relative)
 				top[0] = top[0].toUpperCase();
 			/* TODO: Primitive optimiser someday? */
-			result.sequence.push(top);
+			const reverseList = distortionStack.filter(item => item.type === Distortion.OPERATION_REVERSE_ORDER);
+			if(reverseList.length % 2)
+				result.sequence.splice(reverseList[0].value.toNumber(), 0, top);
+			else
+				result.sequence.push(top);
 		}
 
 		return;

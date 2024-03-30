@@ -331,6 +331,9 @@ export default class ExpressionParser
 						})[state.current.type], expResult.accumulator));
 						state.current = this.stream.getCurrent();
 						continue;
+					case Token.TYPE_OPERATOR_REVERSE_ORDER:
+						state.distortionStack.push(new Distortion(Distortion.OPERATION_REVERSE_ORDER, null));
+						break;
 					case Token.TYPE_BRACKET:
 						if(!state.hasArgumentList)
 						{

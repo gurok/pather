@@ -133,6 +133,11 @@ export default class TokenStream
             handler: value => value
         },
         {
+            type: Token.TYPE_OPERATOR_REVERSE_ORDER,
+            expression: new RegExp("^%o", ""),
+            handler: value => value
+        },
+        {
             type: Token.TYPE_OPERATOR_FIX,
             expression: new RegExp("^@", ""),
             handler: value => value

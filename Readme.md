@@ -82,7 +82,11 @@ You can also rotate a segment using the distortion operator:
 <path d="M 100,100 bumpyLine%r45" />
 ```
 
-There are three available distortions: `%r` for rotation, `%h` for horizontal skew and `%v` for vertical skew. A segment can only have one distortion applied at a time.
+There are four available distortions:
+ - `%r`*`N`* Rotates a segment by `N` degrees
+ - `%h`*`N`* Skews a segment horizontally by `N` degrees
+ - `%v`*`N`* Skews a segment vertically by `N` degrees
+ - `%o` Reverses the order of commands in a segment
 
 You can call a segment with named parameters that override unit values:
 
@@ -90,9 +94,9 @@ You can call a segment with named parameters that override unit values:
 <path d="M 100,100 bumpyLine(g=20 %r=45 #=3)"
 ```
 
-Where `%r=` and `#=` are alternate syntax for the rotation operator and repetition respectively.
+Where `%r=` and `#=` are alternate syntax for distortion operators and repetition respectively.
 
-You can also measure a  segment's width/height and use it as a value:
+You can also measure a segment's width/height and use it as a value:
 
 ```
 <!-- Draw a line that's the width and height of a bumpyLine -->

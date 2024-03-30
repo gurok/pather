@@ -75,6 +75,13 @@ export default class PathParser
 			current: this.stream.getCurrent(),
 			reading: true
 		};
+		distortionStack.forEach(item =>
+		{
+			if(item.type === Distortion.OPERATION_REVERSE_ORDER)
+				item.value = new BigDecimal(result.sequence.length);
+
+			return;
+		});
 
 		while(state.reading && state.current)
 		{
