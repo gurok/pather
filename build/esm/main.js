@@ -1308,6 +1308,34 @@ class ExpressionParser
 	}
 }
 
+class ExtendedDOM
+{
+	static typeof(node)
+	{
+		return(node && node.constructor ? node.constructor.name.toLowerCase() : undefined);
+	}
+
+	static extractChildren(element, clean = true)
+	{
+		if(clean && ExtendedDOM.typeof(element.firstChild) === "text")
+			element.removeChild(element.firstChild);
+		while(element.firstChild)
+			element.parentNode.insertBefore(element.firstChild, element);
+		element.parentNode.removeChild(element);
+
+		return;
+	}
+
+	static remove(element, clean = true)
+	{
+		if(clean && ExtendedDOM.typeof(element.previousSibling) === "text")
+			element.parentNode.removeChild(element.previousSibling);
+		element.parentNode.removeChild(element);
+
+		return;
+	}
+}
+
 class Transformer
 {
 	constructor(text)
@@ -1318,6 +1346,38 @@ class Transformer
 	static #parseXML(text)
 	{
 		return((new (typeof(DOMParser) === "undefined" ? require('xmldom').DOMParser : DOMParser)()).parseFromString(text, "text/xml"));
+	}
+
+	static #parseMeta(document)
+	{
+		let defined = Array.from(document.getElementsByTagName("define"));
+		defined.forEach(element => element.parentNode.removeChild(element));
+		defined = defined.filter(item =>
+				["t", "true", "on", "yes", "y"].includes(item.getAttribute("state").toLowerCase())
+				||
+				(parseFloat(item.getAttribute("state")) || 0) !== 0
+			)
+			.map(item => item.getAttribute("name"));
+		Array.from(document.getElementsByTagName("ifdef")).forEach(element =>
+		{
+			if(defined.includes(element.getAttribute("name")))
+				ExtendedDOM.extractChildren(element);
+			else
+				ExtendedDOM.remove(element);
+
+			return;
+		});
+		Array.from(document.getElementsByTagName("ifndef")).forEach(element =>
+		{
+			if(defined.includes(element.getAttribute("name")))
+				ExtendedDOM.remove(element);
+			else
+				ExtendedDOM.extractChildren(element);
+
+			return;
+		});
+	
+		return;
 	}
 
 	static #parseUnitList(context, list)
@@ -1641,6 +1701,7 @@ class Transformer
 			}
 		};
 		this.#parseIncludeList(configuration);
+		Transformer.#parseMeta(this.document);
 		Transformer.#parseUnitList(context, Array.from(this.document.getElementsByTagName("unit")));
 		for(let item in configuration.unit)
 			context.unit[item] = configuration.unit[item];
