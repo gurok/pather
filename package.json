@@ -9,6 +9,7 @@
   },
   "scripts": {
     "start": "node build/cjs/main.js",
+    "profile": "node --prof build/cjs/main.js",
     "build": "rollup -c",
     "dev": "rollup -c -w"
   },

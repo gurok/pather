@@ -149,11 +149,11 @@ export default class PathParser
 						if(state.current.type === Token.TYPE_NUMBER)
 						{
 							next = this.stream.peekNext();
-							invoked = next.type === Token.TYPE_IDENTIFIER && context.segment[next.name];
+							invoked = next.type === Token.TYPE_IDENTIFIER ? context.segment[next.name] : null;
 						}
 						else
 							invoked = context.segment[state.current.name];
-						if(!invoked)
+						if(invoked == null)
 						{
 							let expResult = new ExpressionParser(this.stream).parse(context, 0, argumentList, false, {x: result.x, y: result.y}, result.arity[result.arity.length - result.pending]);
 							top.push({fixed: result.fixNext, value: expResult.accumulator});

@@ -836,11 +836,11 @@ class PathParser
 						if(state.current.type === Token.TYPE_NUMBER)
 						{
 							next = this.stream.peekNext();
-							invoked = next.type === Token.TYPE_IDENTIFIER && context.segment[next.name];
+							invoked = next.type === Token.TYPE_IDENTIFIER ? context.segment[next.name] : null;
 						}
 						else
 							invoked = context.segment[state.current.name];
-						if(!invoked)
+						if(invoked == null)
 						{
 							let expResult = new ExpressionParser(this.stream).parse(context, 0, argumentList, false, {x: result.x, y: result.y}, result.arity[result.arity.length - result.pending]);
 							top.push({fixed: result.fixNext, value: expResult.accumulator});
@@ -1439,6 +1439,7 @@ class Transformer
 
 			return;
 		});
+		console.log("list", list);
 		context.segment = list.reduce((previous, current) =>
 		{
 			let id = current.getAttribute("id");
@@ -1446,10 +1447,12 @@ class Transformer
 				throw(new Error(`Duplicate segment ID: "${id}"`));
 			if(id in context.unit)
 				throw(new Error(`Segment ID: "${id}" already defined as a unit`));
+			console.log(current.getAttribute("id"), current.getAttribute("d"));
 			previous[current.getAttribute("id")] = current.getAttribute("d");
 
 			return(previous);
 		}, {});
+		console.log("context.segment", context.segment);
 	}
 
 	#parseIncludeList(configuration)
@@ -1594,10 +1597,6 @@ class Transformer
 							y++;
 						}
 					}
-					["start", "stop", "column-count"].forEach(item =>
-						{
-							template.setAttribute("d", );
-						});
 					break;
 			}
 			template.parentNode.removeChild(template);
@@ -1852,7 +1851,7 @@ export function transform(text, configuration, require)
 	parameterList.forEach((parameter, pindex) =>
 	{
 		if(comseqfound)
-			console.log(`Command ${pindex + 1} of ${parameterList.length}`, parameter);
+			console.log(`Command ${pindex + 1} of ${parameterList.length}`, "[\"" + parameter.join("\", \"") + "\"]");
 		let timeStart = Date.now();
 		let valid = true;
 		let reading = true;

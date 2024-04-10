@@ -261,10 +261,6 @@ export default class Transformer
 							y++;
 						}
 					}
-					["start", "stop", "column-count"].forEach(item =>
-						{
-							template.setAttribute("d", );
-						})
 					break;
 			}
 			template.parentNode.removeChild(template);
@@ -383,7 +379,7 @@ export default class Transformer
 			let item = list.shift();
 			let parser = new PathParser(new TokenStream(item.getAttribute("d")));
 			let pathResult = parser.parse(context);
-			item.setAttribute("d", PathParser.resultToString(pathResult, context.optimisation.path.precision))
+			item.setAttribute("d", PathParser.resultToString(pathResult, context.optimisation.path.precision));
 		}
 		const scan =
 		[

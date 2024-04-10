@@ -62,7 +62,7 @@ export function transform(text, configuration, require)
 	parameterList.forEach((parameter, pindex) =>
 	{
 		if(comseqfound)
-			console.log(`Command ${pindex + 1} of ${parameterList.length}`, parameter);
+			console.log(`Command ${pindex + 1} of ${parameterList.length}`, "[\"" + parameter.join("\", \"") + "\"]");
 		let timeStart = Date.now();
 		let valid = true;
 		let reading = true;
