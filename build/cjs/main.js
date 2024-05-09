@@ -803,7 +803,7 @@ class PathParser
 					}
 					else
 						invoked = context.segment[state.current.name];
-					if(invoked)
+					if(![false, null, undefined].includes(invoked))
 					{
 						if(top)
 						{
@@ -1439,7 +1439,6 @@ class Transformer
 
 			return;
 		});
-		console.log("list", list);
 		context.segment = list.reduce((previous, current) =>
 		{
 			let id = current.getAttribute("id");
@@ -1447,12 +1446,10 @@ class Transformer
 				throw(new Error(`Duplicate segment ID: "${id}"`));
 			if(id in context.unit)
 				throw(new Error(`Segment ID: "${id}" already defined as a unit`));
-			console.log(current.getAttribute("id"), current.getAttribute("d"));
 			previous[current.getAttribute("id")] = current.getAttribute("d");
 
 			return(previous);
 		}, {});
-		console.log("context.segment", context.segment);
 	}
 
 	#parseIncludeList(configuration)
@@ -1513,21 +1510,27 @@ class Transformer
 		} while(list.length);
 	}
 
-	static #insertTemplateContent(template, replacement)
+	static #insertTemplateContent(template, replacement, iif, context)
 	{
-		const copy = template.cloneNode(true);
-		const list = Array.from(copy.getElementsByTagName("*"));
-		list.forEach(element =>
-			Array.from(element.attributes).forEach(attribute =>
-				Object.entries(replacement).forEach(([replaceKey, replaceValue]) =>
-					attribute.value = attribute.value.replaceAll(replaceKey, replaceValue)
-				)
-			)
+		Object.entries(replacement).forEach(([replaceKey, replaceValue]) =>
+			iif = iif.replaceAll(replaceKey, replaceValue)
 		);
-		if(copy.firstChild && !copy.firstChild.tagName && copy.firstChild.nodeValue.trim() === "")
-				copy.removeChild(copy.firstChild);
-		while(copy.firstChild)
-			template.parentNode.insertBefore(copy.firstChild, template);
+		if(!iif.length || Object.keys(context.segment).includes(iif))
+		{
+			const copy = template.cloneNode(true);
+			const list = Array.from(copy.getElementsByTagName("*"));
+			list.forEach(element =>
+				Array.from(element.attributes).forEach(attribute =>
+					Object.entries(replacement).forEach(([replaceKey, replaceValue]) =>
+						attribute.value = attribute.value.replaceAll(replaceKey, replaceValue)
+					)
+				)
+			);
+			if(copy.firstChild && !copy.firstChild.tagName && copy.firstChild.nodeValue.trim() === "")
+					copy.removeChild(copy.firstChild);
+			while(copy.firstChild)
+				template.parentNode.insertBefore(copy.firstChild, template);
+		}
 
 		return;
 	}
@@ -1574,6 +1577,7 @@ class Transformer
 
 						return({start: range[0], stop: range[1], value: value ?? ""});
 					});
+					let iif = template.getAttribute("if") ?? "";
 					let iFormat = template.getAttribute("i-format") ?? "";
 					let vFormat = template.getAttribute("v-format") ?? "";
 					let xFormat = template.getAttribute("x-format") ?? "";
@@ -1583,13 +1587,14 @@ class Transformer
 					for(let index = start; index <= stop; index += step)
 					{
 						let v = vMap.find(item => index >= item.start && index <= item.stop)?.value ?? index;
-						Transformer.#insertTemplateContent(template,
+						const replacement =
 						{
 							"?x?": Transformer.#formatTemplateValue(x, xFormat),
 							"?y?": Transformer.#formatTemplateValue(y, yFormat),
 							"?i?": Transformer.#formatTemplateValue(index, iFormat),
 							"?v?": Transformer.#formatTemplateValue(v, vFormat)
-						});
+						};
+						Transformer.#insertTemplateContent(template, replacement, iif, context);
 						x++;
 						if(x === columnCount)
 						{

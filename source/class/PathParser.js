@@ -116,7 +116,7 @@ export default class PathParser
 					}
 					else
 						invoked = context.segment[state.current.name];
-					if(invoked)
+					if(![false, null, undefined].includes(invoked))
 					{
 						if(top)
 						{
