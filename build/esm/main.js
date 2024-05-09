@@ -1425,6 +1425,27 @@ class Transformer
 					throw(new Error("Couldn't parse item, " + except.message, {cause: except}));
 			}
 		}
+
+		return;
+	}
+
+	static #parseLiteralList(context, list)
+	{
+		let item;
+
+		while(list.length)
+		{
+			item = list.shift();
+			if(!item.previousSibling.tagName && item.previousSibling.nodeValue.trim() === "")
+				item.parentNode.removeChild(item.previousSibling);
+			item.parentNode.removeChild(item);
+			let id = item.getAttribute("id");
+			if(id in context.unit)
+				throw(new Error(`Duplicate literal ID: "${id}"`));
+			context.literal[id] = item.getAttribute("value");
+		}
+
+		return;
 	}
 
 	static #parseSegmentList(context, list)
@@ -1448,6 +1469,8 @@ class Transformer
 
 			return(previous);
 		}, {});
+
+		return;
 	}
 
 	#parseIncludeList(configuration)
@@ -1506,6 +1529,8 @@ class Transformer
 				item.parentNode.removeChild(item);
 			});
 		} while(list.length);
+
+		return;
 	}
 
 	static #insertTemplateContent(template, replacement, iif, context)
@@ -1548,6 +1573,13 @@ class Transformer
 		);
 	}
 
+	static #getTemplateLiteral(context, template, attribute)
+	{
+		const value = template.getAttribute(attribute);
+
+		return(context.literal[value] ?? value);
+	}
+
 	static #applyTemplate(context, document)
 	{
 		let template = document.getElementsByTagName("template")[0];
@@ -1556,13 +1588,23 @@ class Transformer
 			switch(template.getAttribute("type"))
 			{
 				case "repeat":
-					let start = parseInt(PathParser.parseValueAttribute(context, template.getAttribute("start"))) || 0;
-					let stop = parseInt(PathParser.parseValueAttribute(context, template.getAttribute("stop"))) || 0;
+					let minimum;
+					let maximum;
+					let loop = Transformer.#getTemplateLiteral(context, template, "range").split(new RegExp("\\s*,\\s*", "g")).filter(item => item !== "").map(item =>
+					{
+						let [lower, upper] = item.split(new RegExp("\\s*-\\s*", "g")).slice(0, 2).map(i => parseInt(i) || 0);
+						if(lower > upper)
+							[lower, upper] = [upper, lower];
+						if(minimum === undefined || lower < minimum)
+							minimum = lower;
+						if(maximum === undefined || upper > maximum)
+							maximum = upper;
+
+						return({lower, upper});
+					});
 					let step = parseInt(PathParser.parseValueAttribute(context, template.getAttribute("step"))) || 1;
-					let columnCount = parseInt(PathParser.parseValueAttribute(context, template.getAttribute("column-count"))) || 0;
-					let minimum = start < stop ? start : stop;
-					let maximum = start > stop ? start : stop;
-					let vMap = template.getAttribute("v-map").split(new RegExp("\\s*,\\s*", "g")).filter(item => item !== "").map(item =>
+					let columnCount = parseInt(Transformer.#getTemplateLiteral(context, template, "column-count")) || 0;
+					let vMap = Transformer.#getTemplateLiteral(context, template, "v-map").split(new RegExp("\\s*,\\s*", "g")).filter(item => item !== "").map(item =>
 					{
 						let [range, value] = item.split(new RegExp("\\s*:\\s*", "g"));
 						range = range.split("-");
@@ -1580,26 +1622,31 @@ class Transformer
 					let vFormat = template.getAttribute("v-format") ?? "";
 					let xFormat = template.getAttribute("x-format") ?? "";
 					let yFormat = template.getAttribute("y-format") ?? "";
-					let y = Math.floor(start / columnCount);
-					let x = start - (y * columnCount);
-					for(let index = start; index <= stop; index += step)
+					let y = 0;
+					let x = 0;
+					loop.forEach(loopEntry =>
 					{
-						let v = vMap.find(item => index >= item.start && index <= item.stop)?.value ?? index;
-						const replacement =
+						for(let index = loopEntry.lower; index <= loopEntry.upper; index += step)
 						{
-							"?x?": Transformer.#formatTemplateValue(x, xFormat),
-							"?y?": Transformer.#formatTemplateValue(y, yFormat),
-							"?i?": Transformer.#formatTemplateValue(index, iFormat),
-							"?v?": Transformer.#formatTemplateValue(v, vFormat)
-						};
-						Transformer.#insertTemplateContent(template, replacement, iif, context);
-						x++;
-						if(x === columnCount)
-						{
-							x = 0;
-							y++;
+							let v = vMap.find(item => index >= item.start && index <= item.stop)?.value ?? index;
+							const replacement =
+							{
+								"?x?": Transformer.#formatTemplateValue(x, xFormat),
+								"?y?": Transformer.#formatTemplateValue(y, yFormat),
+								"?i?": Transformer.#formatTemplateValue(index, iFormat),
+								"?v?": Transformer.#formatTemplateValue(v, vFormat)
+							};
+							Transformer.#insertTemplateContent(template, replacement, iif, context);
+							x++;
+							if(x === columnCount)
+							{
+								x = 0;
+								y++;
+							}
 						}
-					}
+
+						return;
+					});
 					break;
 			}
 			template.parentNode.removeChild(template);
@@ -1688,6 +1735,7 @@ class Transformer
 	{
 		let context =
 		{
+			literal: {},
 			unit: {},
 			depth: 1,
 			optimisation:
@@ -1707,6 +1755,7 @@ class Transformer
 		this.#parseIncludeList(configuration);
 		Transformer.#parseMeta(this.document);
 		Transformer.#parseUnitList(context, Array.from(this.document.getElementsByTagName("unit")));
+		Transformer.#parseLiteralList(context, Array.from(this.document.getElementsByTagName("literal")));
 		for(let item in configuration.unit)
 			context.unit[item] = configuration.unit[item];
 		Transformer.#parseSegmentList(context, Array.from(this.document.getElementsByTagName("segment")));
