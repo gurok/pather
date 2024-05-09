@@ -1592,9 +1592,9 @@ class Transformer
 				case "repeat":
 					let minimum;
 					let maximum;
-					let loop = Transformer.#getTemplateLiteral(context, template, "range").split(new RegExp("\\s*,\\s*", "g")).filter(item => item !== "").map(item =>
+					let loop = Transformer.#getTemplateLiteral(context, template, "range").split(new RegExp("\\s*,\\s*", "gm")).filter(item => item !== "").map(item =>
 					{
-						let [lower, upper] = item.split(new RegExp("\\s*-\\s*", "g")).slice(0, 2).map(i => parseInt(i) || 0);
+						let [lower, upper] = item.trim().split(new RegExp("\\s*-\\s*", "gm")).slice(0, 2).map(i => parseInt(i) || 0);
 						if(lower > upper)
 							[lower, upper] = [upper, lower];
 						if(minimum === undefined || lower < minimum)
@@ -1606,9 +1606,9 @@ class Transformer
 					});
 					let step = parseInt(PathParser.parseValueAttribute(context, template.getAttribute("step"))) || 1;
 					let columnCount = parseInt(Transformer.#getTemplateLiteral(context, template, "column-count")) || 0;
-					let vMap = Transformer.#getTemplateLiteral(context, template, "v-map").split(new RegExp("\\s*,\\s*", "g")).filter(item => item !== "").map(item =>
+					let vMap = Transformer.#getTemplateLiteral(context, template, "v-map").split(new RegExp("\\s*,\\s*", "gm")).filter(item => item !== "").map(item =>
 					{
-						let [range, value] = item.split(new RegExp("\\s*:\\s*", "g"));
+						let [range, value] = item.trim().split(new RegExp("\\s*:\\s*", "gm"));
 						range = range.split("-");
 						if(range.length < 2)
 							range[1] = range[0];
