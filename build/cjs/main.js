@@ -1535,7 +1535,7 @@ class Transformer
 		return;
 	}
 
-	static #insertTemplateContent(template, replacement, iif, context)
+	static #insertTemplateContent(template, replacement, iif, context, container)
 	{
 		Object.entries(replacement).forEach(([replaceKey, replaceValue]) =>
 			iif = iif.replaceAll(replaceKey, replaceValue)
@@ -1545,16 +1545,27 @@ class Transformer
 			const copy = template.cloneNode(true);
 			const list = Array.from(copy.getElementsByTagName("*"));
 			list.forEach(element =>
+			{
 				Array.from(element.attributes).forEach(attribute =>
 					Object.entries(replacement).forEach(([replaceKey, replaceValue]) =>
 						attribute.value = attribute.value.replaceAll(replaceKey, replaceValue)
 					)
-				)
-			);
+				);
+				iif = element.getAttribute("if");
+				if(iif.length && !Object.keys(context.segment).includes(iif))
+					element.parentNode.removeChild(element);
+				element.removeAttribute("if");
+
+				return;
+			});
 			if(copy.firstChild && !copy.firstChild.tagName && copy.firstChild.nodeValue.trim() === "")
 					copy.removeChild(copy.firstChild);
-			while(copy.firstChild)
-				template.parentNode.insertBefore(copy.firstChild, template);
+			if(!container)
+				while(copy.firstChild)
+					template.parentNode.insertBefore(copy.firstChild, template);
+			else
+				while(copy.firstChild)
+					container.appendChild(copy.firstChild);
 		}
 
 		return;
@@ -1606,6 +1617,8 @@ class Transformer
 					});
 					let step = parseInt(PathParser.parseValueAttribute(context, template.getAttribute("step"))) || 1;
 					let columnCount = parseInt(Transformer.#getTemplateLiteral(context, template, "column-count")) || 0;
+					let groupRowCount = parseInt(Transformer.#getTemplateLiteral(context, template, "g-row-count")) || 0;
+					let groupRowId = Transformer.#getTemplateLiteral(context, template, "g-row-id");
 					let vMap = Transformer.#getTemplateLiteral(context, template, "v-map").split(new RegExp("\\s*,\\s*", "gm")).filter(item => item !== "").map(item =>
 					{
 						let [range, value] = item.trim().split(new RegExp("\\s*:\\s*", "gm"));
@@ -1624,21 +1637,38 @@ class Transformer
 					let vFormat = template.getAttribute("v-format") ?? "";
 					let xFormat = template.getAttribute("x-format") ?? "";
 					let yFormat = template.getAttribute("y-format") ?? "";
+					let gFormat = template.getAttribute("g-format") ?? "";
 					let y = 0;
 					let x = 0;
+					let container;
+					let groupIndex = -1;
 					loop.forEach(loopEntry =>
 					{
 						for(let index = loopEntry.lower; index <= loopEntry.upper; index += step)
 						{
 							let v = vMap.find(item => index >= item.start && index <= item.stop)?.value ?? index;
+							if(groupRowCount && (y % groupRowCount === 0) && x === 0)
+								groupIndex++;
 							const replacement =
 							{
 								"?x?": Transformer.#formatTemplateValue(x, xFormat),
 								"?y?": Transformer.#formatTemplateValue(y, yFormat),
 								"?i?": Transformer.#formatTemplateValue(index, iFormat),
-								"?v?": Transformer.#formatTemplateValue(v, vFormat)
+								"?v?": Transformer.#formatTemplateValue(v, vFormat),
+								"?g?": Transformer.#formatTemplateValue(groupIndex, gFormat),
+								"?gy?": Transformer.#formatTemplateValue(y - (groupIndex * groupRowCount), yFormat)
 							};
-							Transformer.#insertTemplateContent(template, replacement, iif, context);
+							if(groupRowCount && (y % groupRowCount === 0) && x === 0)
+							{
+								container = template.ownerDocument.createElement("g");
+								let id = groupRowId;
+								Object.entries(replacement).forEach(([replaceKey, replaceValue]) =>
+									id = id.replaceAll(replaceKey, replaceValue)
+								);
+								container.setAttribute("id", id);
+								template.parentNode.insertBefore(container, template);
+							}
+							Transformer.#insertTemplateContent(template, replacement, iif, context, container);
 							x++;
 							if(x === columnCount)
 							{
@@ -1775,6 +1805,8 @@ class Transformer
 		[
 			{tagName: "svg", attribute: [{name: "viewBox", limit: 4}, "width", "height"]},
 			{tagName: "rect", attribute: ["x", "y", "width", "height", "rx", "ry"]},
+			{tagName: "text", attribute: ["x", "y"]},
+			{tagName: "use", attribute: ["x", "y"]},
 			{tagName: "circle", attribute: ["r", "cx", "cy"]},
 			{tagName: "ellipse", attribute: ["rx", "ry", "cx", "cy"]},
 			{tagName: "line", attribute: ["x1", "y1", "x2", "y2"]},
