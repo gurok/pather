@@ -122,7 +122,11 @@ class BigDecimal
     {
         let text;
 
-        text = this.#fromBigIntDivision(this.#value, BigInt("1" + "0".repeat(precision > -1 ? Math.max(BigDecimal.LIMIT_PRECISION - precision, 0) : BigDecimal.LIMIT_PRECISION))).#value.toString().padStart(precision + 1, "0");
+        text = this.#fromBigIntDivision(this.#value, BigInt("1" + "0".repeat(precision > -1 ? Math.max(BigDecimal.LIMIT_PRECISION - precision, 0) : BigDecimal.LIMIT_PRECISION))).#value.toString();
+        if(text.startsWith("-"))
+            text = "-" + text.substr(1).padStart(precision + 1, "0");
+        else
+            text = text.padStart(precision + 1, "0");
 
         return(text.substr(0, text.length - precision) + ("." + text.substr(-precision)).replace(BigDecimal.#PATTERN_TRAILING_ZERO, ""));
     }
