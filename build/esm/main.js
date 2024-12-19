@@ -1938,6 +1938,7 @@ export function transform(text, configuration, require)
 		parameterList = [process.argv.slice(2)];
 	parameterList.forEach((parameter, pindex) =>
 	{
+		parameter = parameter.map(pp => path.join(...pp.split(new RegExp("\\\\", "g"))));
 		if(comseqfound)
 			console.log(`Command ${pindex + 1} of ${parameterList.length}`, "[\"" + parameter.join("\", \"") + "\"]");
 		let timeStart = Date.now();
