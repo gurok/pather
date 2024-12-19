@@ -1933,6 +1933,7 @@ export function transform(text, configuration, require)
 	{
 		process.chdir(comseq);
 		comseq = path.join(comseq, "comseq.txt");
+		console.log(process.cwd());
 		parameterList = fs.readFileSync(comseq, "utf-8").split("\n").map(line => line.trim()).map(line => line.split(new RegExp("\\s+")));
 		comseqfound = true;
 	}
@@ -1940,6 +1941,7 @@ export function transform(text, configuration, require)
 		parameterList = [process.argv.slice(2)];
 	parameterList.forEach((parameter, pindex) =>
 	{
+		parameter = parameter.map(pp => path.join(...pp.split(new RegExp("\\\\", "g"))));
 		if(comseqfound)
 			console.log(`Command ${pindex + 1} of ${parameterList.length}`, "[\"" + parameter.join("\", \"") + "\"]");
 		let timeStart = Date.now();
