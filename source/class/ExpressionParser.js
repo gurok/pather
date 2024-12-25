@@ -74,7 +74,7 @@ export default class ExpressionParser
 
 		result =
 		{
-			accumulator: new BigDecimal(0),
+			accumulator: BigDecimal.ZERO,
 			base: 0,
 			counter: depth,
 			data: 0,
@@ -173,15 +173,12 @@ export default class ExpressionParser
 					{
 						case Value.TYPE_X:
 							result.accumulator = expResult.x.subtract(position.x);
-							console.log("RETURNING X", result.accumulator.toString());
 							break;
 						case Value.TYPE_Y:
 							result.accumulator = expResult.y.subtract(position.y);
-							console.log("RETURNING Y", result.accumulator.toString());
 							break;
 						case Value.TYPE_THETA:
 							result.accumulator = (new BigDecimal(Math.atan2(expResult.x.subtract(position.x).toNumber(), expResult.y.subtract(position.y).toNumber()))).multiplyBy(180).divideBy(BigDecimal.PI);
-							console.log("RETURNING THETA", result.accumulator.toString());
 							break;
 					}
 					if(this.stream.getCurrent().type === Token.TYPE_WHITESPACE)
@@ -204,7 +201,7 @@ export default class ExpressionParser
 								console.log("*", state.current);
 							result.stack.push({operation: ExpressionParser.#OPERATION_MULTIPLY, value: result.accumulator});
 						}
-						result.accumulator = new BigDecimal(0);
+						result.accumulator = BigDecimal.ZERO;
 						result.stack.push({operation: ExpressionParser.#OPERATION_EVALUATE});
 						result.data = Token.TYPE_BRACKET;
 					}

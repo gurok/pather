@@ -2,6 +2,7 @@ export default class BigDecimal
 {
     static LIMIT_PRECISION         = 18;
     static PI                      = new BigDecimal("3.141592653589793238");
+    static ZERO                    = new BigDecimal("0");
     static #VALUE_SHIFT            = BigInt("1" + "0".repeat(BigDecimal.LIMIT_PRECISION));
     static #PATTERN_TRAILING_ZERO  = new RegExp("\\.?0+$");
 
@@ -16,7 +17,7 @@ export default class BigDecimal
             this.#value = source.#value;
 		else
             if(source instanceof BigInt)
-                this.#value = value * BigDecimal.VALUE_SHIFT;
+                this.#value = value * BigDecimal.#VALUE_SHIFT;
             else
             {
                 [integerPart, decimalPart] = (source + ".").split(".");

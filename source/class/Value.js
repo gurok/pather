@@ -16,12 +16,12 @@ export default class Value
 			sequence: [],
 			arity: null,
 			pending: 0,
-			x: new BigDecimal(0),
-			y: new BigDecimal(0),
+			x: BigDecimal.ZERO,
+			y: BigDecimal.ZERO,
 			fixNext: false,
 			lastAngle: null,
-			originX: new BigDecimal(0),
-			originY: new BigDecimal(0) 
+			originX: BigDecimal.ZERO,
+			originY: BigDecimal.ZERO
 		});
 	}
 };

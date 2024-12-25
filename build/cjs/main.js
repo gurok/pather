@@ -42,6 +42,7 @@ class BigDecimal
 {
     static LIMIT_PRECISION         = 18;
     static PI                      = new BigDecimal("3.141592653589793238");
+    static ZERO                    = new BigDecimal("0");
     static #VALUE_SHIFT            = BigInt("1" + "0".repeat(BigDecimal.LIMIT_PRECISION));
     static #PATTERN_TRAILING_ZERO  = new RegExp("\\.?0+$");
 
@@ -56,7 +57,7 @@ class BigDecimal
             this.#value = source.#value;
 		else
             if(source instanceof BigInt)
-                this.#value = value * BigDecimal.VALUE_SHIFT;
+                this.#value = value * BigDecimal.#VALUE_SHIFT;
             else
             {
                 [integerPart, decimalPart] = (source + ".").split(".");
@@ -148,12 +149,12 @@ class Value
 			sequence: [],
 			arity: null,
 			pending: 0,
-			x: new BigDecimal(0),
-			y: new BigDecimal(0),
+			x: BigDecimal.ZERO,
+			y: BigDecimal.ZERO,
 			fixNext: false,
 			lastAngle: null,
-			originX: new BigDecimal(0),
-			originY: new BigDecimal(0) 
+			originX: BigDecimal.ZERO,
+			originY: BigDecimal.ZERO
 		});
 	}
 }
@@ -491,8 +492,8 @@ class Distortion
 		relative = top[0].toLowerCase() === top[0];
 		origin =
 		{
-			x: relative ? new BigDecimal(0) : result.x,
-			y: relative ? new BigDecimal(0) : result.y
+			x: relative ? BigDecimal.ZERO : result.x,
+			y: relative ? BigDecimal.ZERO : result.y
 		};
 		if(result.pending)
 			throw(new SyntaxError(`Too few arguments for command ${top[0]}`));
@@ -589,8 +590,8 @@ class Distortion
 			case "l":
 			case "h":
 			case "v":
-				let topX = command === "v" ? {value: new BigDecimal(origin.x), fixed: top[1].fixed} : top[1];
-				let topY = command === "h" ? {value: new BigDecimal(origin.y), fixed: top[1].fixed} : (command === "v" ? top[1] : top[2]);
+				let topX = command === "v" ? {value: origin.x, fixed: top[1].fixed} : top[1];
+				let topY = command === "h" ? {value: origin.y, fixed: top[1].fixed} : (command === "v" ? top[1] : top[2]);
 				point =
 				{
 					x: topX.value,
@@ -667,8 +668,8 @@ class Distortion
 				break;
 			case "z":
 				top = ["z"];
-				result.x = new BigDecimal(result.originX);
-				result.y = new BigDecimal(result.originY);
+				result.x = result.originX;
+				result.y = result.originY;
 				result.lastAngle = null;
 				break;
 		}
@@ -679,8 +680,8 @@ class Distortion
 		}
 		if(command === "m")
 		{
-			result.originX = new BigDecimal(result.x);
-			result.originY = new BigDecimal(result.y);
+			result.originX = result.x;
+			result.originY = result.y;
 		}
 		if(top)
 		{
@@ -931,7 +932,7 @@ class ExpressionParser
 
 		result =
 		{
-			accumulator: new BigDecimal(0),
+			accumulator: BigDecimal.ZERO,
 			base: 0,
 			counter: depth,
 			data: 0,
@@ -1030,15 +1031,12 @@ class ExpressionParser
 					{
 						case Value.TYPE_X:
 							result.accumulator = expResult.x.subtract(position.x);
-							console.log("RETURNING X", result.accumulator.toString());
 							break;
 						case Value.TYPE_Y:
 							result.accumulator = expResult.y.subtract(position.y);
-							console.log("RETURNING Y", result.accumulator.toString());
 							break;
 						case Value.TYPE_THETA:
 							result.accumulator = (new BigDecimal(Math.atan2(expResult.x.subtract(position.x).toNumber(), expResult.y.subtract(position.y).toNumber()))).multiplyBy(180).divideBy(BigDecimal.PI);
-							console.log("RETURNING THETA", result.accumulator.toString());
 							break;
 					}
 					if(this.stream.getCurrent().type === Token.TYPE_WHITESPACE)
@@ -1061,7 +1059,7 @@ class ExpressionParser
 								console.log("*", state.current);
 							result.stack.push({operation: ExpressionParser.#OPERATION_MULTIPLY, value: result.accumulator});
 						}
-						result.accumulator = new BigDecimal(0);
+						result.accumulator = BigDecimal.ZERO;
 						result.stack.push({operation: ExpressionParser.#OPERATION_EVALUATE});
 						result.data = Token.TYPE_BRACKET;
 					}
@@ -1344,6 +1342,8 @@ class ExtendedDOM
 
 class Transformer
 {
+	static #lastContext;
+
 	constructor(text)
 	{
 		this.document = Transformer.#parseXML(text);
@@ -1475,6 +1475,7 @@ class Transformer
 
 			return(previous);
 		}, {});
+		context.segmentKey = Object.keys(context.segment);
 
 		return;
 	}
@@ -1544,7 +1545,7 @@ class Transformer
 		Object.entries(replacement).forEach(([replaceKey, replaceValue]) =>
 			iif = iif.replaceAll(replaceKey, replaceValue)
 		);
-		if(!iif.length || Object.keys(context.segment).includes(iif))
+		if(!iif.length || context.segmentKey.includes(iif))
 		{
 			const copy = template.cloneNode(true);
 			const list = Array.from(copy.getElementsByTagName("*"));
@@ -1556,7 +1557,7 @@ class Transformer
 					)
 				);
 				iif = element.getAttribute("if");
-				if(iif.length && !Object.keys(context.segment).includes(iif))
+				if(iif.length && !context.segmentKey.includes(iif))
 					element.parentNode.removeChild(element);
 				element.removeAttribute("if");
 
@@ -1769,41 +1770,62 @@ class Transformer
 
 	transform(configuration)
 	{
-		let context =
+		let context;
+
+		if(configuration.sharedContext && Transformer.#lastContext)
+			context = Transformer.#lastContext;
+		else
 		{
-			literal: {},
-			unit: {},
-			depth: 1,
-			optimisation:
+			context =
 			{
-				path:
+				literal: {},
+				unit: {},
+				depth: 1,
+				cache:
 				{
-					precision: configuration.precision,
-					combineCommands: configuration.combinePathCommands /* Don't output h 20 h 20 */
+					path: {}
 				},
-				xml:
+				optimisation:
 				{
-					stripWhitespace: configuration.stripWhitespace === "xml" || configuration.stripWhitespace === "all",
-					stripComments: configuration.stripComments
+					path:
+					{
+						precision: configuration.precision,
+						combineCommands: configuration.combinePathCommands /* Don't output h 20 h 20 */
+					},
+					xml:
+					{
+						stripWhitespace: configuration.stripWhitespace === "xml" || configuration.stripWhitespace === "all",
+						stripComments: configuration.stripComments
+					}
 				}
-			}
-		};
-		this.#parseIncludeList(configuration);
-		Transformer.#parseMeta(this.document);
-		Transformer.#parseUnitList(context, Array.from(this.document.getElementsByTagName("unit")));
-		Transformer.#parseLiteralList(context, Array.from(this.document.getElementsByTagName("literal")));
-		for(let item in configuration.unit)
-			context.unit[item] = configuration.unit[item];
-		Transformer.#parseSegmentList(context, Array.from(this.document.getElementsByTagName("segment")));
+			};
+			this.#parseIncludeList(configuration);
+			Transformer.#parseMeta(this.document);
+			Transformer.#parseUnitList(context, Array.from(this.document.getElementsByTagName("unit")));
+			Transformer.#parseLiteralList(context, Array.from(this.document.getElementsByTagName("literal")));
+			for(let item in configuration.unit)
+				context.unit[item] = configuration.unit[item];
+			Transformer.#parseSegmentList(context, Array.from(this.document.getElementsByTagName("segment")));
+			Transformer.#lastContext = context;
+		}
 		Transformer.#applyTemplate(context, this.document);
 		let list = Array.from(this.document.getElementsByTagName("path"));
 		context.depth = 0;
 		while(list.length)
 		{
 			let item = list.shift();
-			let parser = new PathParser(new TokenStream(item.getAttribute("d")));
-			let pathResult = parser.parse(context);
-			item.setAttribute("d", PathParser.resultToString(pathResult, context.optimisation.path.precision));
+			let d = item.getAttribute("d");
+			let text;
+			if(!context.cache.path[d])
+			{
+				let parser = new PathParser(new TokenStream(d));
+				let pathResult = parser.parse(context);
+				text = PathParser.resultToString(pathResult, context.optimisation.path.precision);
+				context.cache.path[d] = text;
+			}
+			else
+				text = context.cache.path[d];
+			item.setAttribute("d", text);
 		}
 		const scan =
 		[
@@ -1852,22 +1874,25 @@ class Transformer
 
 			return;
 		});
-		let stack = [];
-		let cursor = this.document.documentElement.firstChild;
-		let Node = {COMMENT_NODE: 8, TEXT_NODE: 3};
-		while(stack.length || cursor)
+		if(context.optimisation.xml.stripWhitespace || context.optimisation.xml.stripComments)
 		{
-			if(cursor.firstChild)
-				stack.push(cursor.firstChild);
-			let target = cursor;
-			if(cursor.nextSibling)
-				cursor = cursor.nextSibling;
-			else
-				cursor = stack.pop();
-			if(context.optimisation.xml.stripWhitespace && target.nodeType === Node.TEXT_NODE && target.nodeValue.replace(new RegExp("\\s+", "g"), "").length === 0)
-				target.parentNode.removeChild(target);
-			if(context.optimisation.xml.stripComments && target.nodeType === Node.COMMENT_NODE)
-				target.parentNode.removeChild(target);
+			let stack = [];
+			let cursor = this.document.documentElement.firstChild;
+			let Node = {COMMENT_NODE: 8, TEXT_NODE: 3};
+			while(stack.length || cursor)
+			{
+				if(cursor.firstChild)
+					stack.push(cursor.firstChild);
+				let target = cursor;
+				if(cursor.nextSibling)
+					cursor = cursor.nextSibling;
+				else
+					cursor = stack.pop();
+				if(context.optimisation.xml.stripWhitespace && target.nodeType === Node.TEXT_NODE && target.nodeValue.replace(new RegExp("\\s+", "g"), "").length === 0)
+					target.parentNode.removeChild(target);
+				if(context.optimisation.xml.stripComments && target.nodeType === Node.COMMENT_NODE)
+					target.parentNode.removeChild(target);
+			}
 		}
 		if(configuration.extract)
 		{
@@ -1952,7 +1977,8 @@ export function transform(text, configuration, require)
 			stripWhitespace: null,
 			stripComments: false,
 			combinePathCommands: false,
-			precision: 3
+			precision: 3,
+			sharedContext: false
 		};
 	
 		while(reading && valid && parameter[0] && parameter[0].startsWith("--"))
@@ -1992,6 +2018,10 @@ export function transform(text, configuration, require)
 					break;
 				case "--report":
 					configuration.report = true;
+					parameter.shift();
+					break;
+				case "--sharedContext":
+					configuration.sharedContext = true;
 					parameter.shift();
 					break;
 				case "--":

@@ -7,6 +7,8 @@ import ExtendedDOM from "./ExtendedDOM";
 
 export default class Transformer
 {
+	static #lastContext;
+
 	constructor(text)
 	{
 		this.document = Transformer.#parseXML(text);
@@ -138,6 +140,7 @@ export default class Transformer
 
 			return(previous);
 		}, {});
+		context.segmentKey = Object.keys(context.segment);
 
 		return;
 	}
@@ -207,7 +210,7 @@ export default class Transformer
 		Object.entries(replacement).forEach(([replaceKey, replaceValue]) =>
 			iif = iif.replaceAll(replaceKey, replaceValue)
 		);
-		if(!iif.length || Object.keys(context.segment).includes(iif))
+		if(!iif.length || context.segmentKey.includes(iif))
 		{
 			const copy = template.cloneNode(true);
 			const list = Array.from(copy.getElementsByTagName("*"));
@@ -219,7 +222,7 @@ export default class Transformer
 					)
 				)
 				iif = element.getAttribute("if");
-				if(iif.length && !Object.keys(context.segment).includes(iif))
+				if(iif.length && !context.segmentKey.includes(iif))
 					element.parentNode.removeChild(element);
 				element.removeAttribute("if");
 
@@ -432,41 +435,62 @@ export default class Transformer
 
 	transform(configuration)
 	{
-		let context =
+		let context;
+
+		if(configuration.sharedContext && Transformer.#lastContext)
+			context = Transformer.#lastContext;
+		else
 		{
-			literal: {},
-			unit: {},
-			depth: 1,
-			optimisation:
+			context =
 			{
-				path:
+				literal: {},
+				unit: {},
+				depth: 1,
+				cache:
 				{
-					precision: configuration.precision,
-					combineCommands: configuration.combinePathCommands /* Don't output h 20 h 20 */
+					path: {}
 				},
-				xml:
+				optimisation:
 				{
-					stripWhitespace: configuration.stripWhitespace === "xml" || configuration.stripWhitespace === "all",
-					stripComments: configuration.stripComments
+					path:
+					{
+						precision: configuration.precision,
+						combineCommands: configuration.combinePathCommands /* Don't output h 20 h 20 */
+					},
+					xml:
+					{
+						stripWhitespace: configuration.stripWhitespace === "xml" || configuration.stripWhitespace === "all",
+						stripComments: configuration.stripComments
+					}
 				}
-			}
-		};
-		this.#parseIncludeList(configuration);
-		Transformer.#parseMeta(this.document);
-		Transformer.#parseUnitList(context, Array.from(this.document.getElementsByTagName("unit")));
-		Transformer.#parseLiteralList(context, Array.from(this.document.getElementsByTagName("literal")));
-		for(let item in configuration.unit)
-			context.unit[item] = configuration.unit[item];
-		Transformer.#parseSegmentList(context, Array.from(this.document.getElementsByTagName("segment")));
+			};
+			this.#parseIncludeList(configuration);
+			Transformer.#parseMeta(this.document);
+			Transformer.#parseUnitList(context, Array.from(this.document.getElementsByTagName("unit")));
+			Transformer.#parseLiteralList(context, Array.from(this.document.getElementsByTagName("literal")));
+			for(let item in configuration.unit)
+				context.unit[item] = configuration.unit[item];
+			Transformer.#parseSegmentList(context, Array.from(this.document.getElementsByTagName("segment")));
+			Transformer.#lastContext = context;
+		}
 		Transformer.#applyTemplate(context, this.document);
 		let list = Array.from(this.document.getElementsByTagName("path"));
 		context.depth = 0;
 		while(list.length)
 		{
 			let item = list.shift();
-			let parser = new PathParser(new TokenStream(item.getAttribute("d")));
-			let pathResult = parser.parse(context);
-			item.setAttribute("d", PathParser.resultToString(pathResult, context.optimisation.path.precision));
+			let d = item.getAttribute("d");
+			let text;
+			if(!context.cache.path[d])
+			{
+				let parser = new PathParser(new TokenStream(d));
+				let pathResult = parser.parse(context);
+				text = PathParser.resultToString(pathResult, context.optimisation.path.precision);
+				context.cache.path[d] = text;
+			}
+			else
+				text = context.cache.path[d];
+			item.setAttribute("d", text);
 		}
 		const scan =
 		[
@@ -518,22 +542,25 @@ export default class Transformer
 
 			return;
 		});
-		let stack = [];
-		let cursor = this.document.documentElement.firstChild;
-		let Node = {COMMENT_NODE: 8, TEXT_NODE: 3};
-		while(stack.length || cursor)
+		if(context.optimisation.xml.stripWhitespace || context.optimisation.xml.stripComments)
 		{
-			if(cursor.firstChild)
-				stack.push(cursor.firstChild);
-			let target = cursor;
-			if(cursor.nextSibling)
-				cursor = cursor.nextSibling;
-			else
-				cursor = stack.pop();
-			if(context.optimisation.xml.stripWhitespace && target.nodeType === Node.TEXT_NODE && target.nodeValue.replace(new RegExp("\\s+", "g"), "").length === 0)
-				target.parentNode.removeChild(target);
-			if(context.optimisation.xml.stripComments && target.nodeType === Node.COMMENT_NODE)
-				target.parentNode.removeChild(target);
+			let stack = [];
+			let cursor = this.document.documentElement.firstChild;
+			let Node = {COMMENT_NODE: 8, TEXT_NODE: 3};
+			while(stack.length || cursor)
+			{
+				if(cursor.firstChild)
+					stack.push(cursor.firstChild);
+				let target = cursor;
+				if(cursor.nextSibling)
+					cursor = cursor.nextSibling;
+				else
+					cursor = stack.pop();
+				if(context.optimisation.xml.stripWhitespace && target.nodeType === Node.TEXT_NODE && target.nodeValue.replace(new RegExp("\\s+", "g"), "").length === 0)
+					target.parentNode.removeChild(target);
+				if(context.optimisation.xml.stripComments && target.nodeType === Node.COMMENT_NODE)
+					target.parentNode.removeChild(target);
+			}
 		}
 		if(configuration.extract)
 		{

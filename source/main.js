@@ -1,4 +1,5 @@
 import Transformer from "./class/Transformer";
+import Profiler from "./class/Profiler";
 import PathParser from "./class/PathParser";
 import BigDecimal from "./class/BigDecimal";
 import * as fs from 'fs';
@@ -73,7 +74,8 @@ export function transform(text, configuration, require)
 			stripWhitespace: null,
 			stripComments: false,
 			combinePathCommands: false,
-			precision: 3
+			precision: 3,
+			sharedContext: false
 		};
 	
 		while(reading && valid && parameter[0] && parameter[0].startsWith("--"))
@@ -113,6 +115,10 @@ export function transform(text, configuration, require)
 					break;
 				case "--report":
 					configuration.report = true;
+					parameter.shift();
+					break;
+				case "--sharedContext":
+					configuration.sharedContext = true;
 					parameter.shift();
 					break;
 				case "--":

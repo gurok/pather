@@ -121,8 +121,8 @@ export default class Distortion
 		relative = top[0].toLowerCase() === top[0];
 		origin =
 		{
-			x: relative ? new BigDecimal(0) : result.x,
-			y: relative ? new BigDecimal(0) : result.y
+			x: relative ? BigDecimal.ZERO : result.x,
+			y: relative ? BigDecimal.ZERO : result.y
 		}
 		if(result.pending)
 			throw(new SyntaxError(`Too few arguments for command ${top[0]}`));
@@ -219,8 +219,8 @@ export default class Distortion
 			case "l":
 			case "h":
 			case "v":
-				let topX = command === "v" ? {value: new BigDecimal(origin.x), fixed: top[1].fixed} : top[1];
-				let topY = command === "h" ? {value: new BigDecimal(origin.y), fixed: top[1].fixed} : (command === "v" ? top[1] : top[2]);
+				let topX = command === "v" ? {value: origin.x, fixed: top[1].fixed} : top[1];
+				let topY = command === "h" ? {value: origin.y, fixed: top[1].fixed} : (command === "v" ? top[1] : top[2]);
 				point =
 				{
 					x: topX.value,
@@ -297,8 +297,8 @@ export default class Distortion
 				break;
 			case "z":
 				top = ["z"];
-				result.x = new BigDecimal(result.originX);
-				result.y = new BigDecimal(result.originY);
+				result.x = result.originX;
+				result.y = result.originY;
 				result.lastAngle = null;
 				break;
 		}
@@ -309,8 +309,8 @@ export default class Distortion
 		}
 		if(command === "m")
 		{
-			result.originX = new BigDecimal(result.x);
-			result.originY = new BigDecimal(result.y);
+			result.originX = result.x;
+			result.originY = result.y;
 		}
 		if(top)
 		{
